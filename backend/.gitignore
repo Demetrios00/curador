@@ -1,0 +1,17 @@
+node_modules/
+dist/
+
+# segredos — nunca versionar
+.env
+.env.*
+!.env.example
+*serviceAccount*.json
+firebase-adminsdk*.json
+
+# logs
+*.log
+npm-debug.log*
+
+# editor
+.vscode/
+.DS_Store

@@ -1,0 +1,31 @@
+# =============================================================================
+# CuraDor — .gitignore da raiz do repositório (backend/ + mobile/)
+# =============================================================================
+
+# Dependências
+**/node_modules/
+
+# Builds / caches de bundler
+**/dist/
+**/.expo/
+**/web-build/
+
+# Nativo (gerado por prebuild/expo run — não faz parte do código-fonte)
+**/android/
+**/ios/
+
+# Variáveis de ambiente — NUNCA versionar (mesmo sendo só EXPO_PUBLIC_* no mobile)
+**/.env
+**/.env.*.local
+!**/.env.example
+
+# Credenciais do Firebase Admin SDK — NUNCA versionar
+*serviceAccount*.json
+*firebase-adminsdk*.json
+curador-*-firebase-adminsdk*.json
+
+# Sistema / editor
+.DS_Store
+*.log
+npm-debug.log*
+.vscode/
