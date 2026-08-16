@@ -15,6 +15,7 @@ camada MCP — nunca expor segredos de API ao cliente mobile.
 - [x] **Fase 6 (parcial) — Agente de Resultados** (validado de ponta a ponta, com Firestore real)
 - [x] **Fase 6 — Agente de Unidades** (validado de ponta a ponta, com Firestore real — os quatro agentes previstos no artigo estão implementados)
 - [x] **Fase 7 — Rastreabilidade (`agent_logs`)** (validado neste ambiente: gravação segura/fire-and-forget confirmada sem Firebase configurado; endpoint de resumo/avaliação testado com dados simulados; falta a validação com Firestore real, feita por você a seguir)
+- [x] **Fase 5a — Agente de Agendamentos: consulta ampliada (passado + status)** (typecheck/build validados neste ambiente + lógica pura testada isoladamente; falta a validação end-to-end com Firestore real, feita por você a seguir)
 
 ## Endpoint POST /api/orchestrator/route (autenticado)
 
@@ -39,11 +40,15 @@ Resposta esperada (200) para intenção `APPOINTMENTS`:
   "confidence": 0.9,
   "agent": "appointments",
   "result": {
-    "message": "Você tem 1 agendamento futuro: Consulta Cardiologia em 26 de jun. de 2026 às 09:11 (Hospital Prime Care).",
-    "upcoming": [{ "id": "...", "title": "...", "date": "...", "status": "agendado", "hospitalName": "...", "doctorName": null }]
+    "message": "Você tem 4 agendamentos no total (1 marcado(s), 1 realizado(s), 1 cancelado(s) e 1 perdido(s)). O próximo é Consulta Cardiologia em 26 de jun. de 2026 às 09:11 (Hospital Prime Care).",
+    "upcoming": [{ "id": "...", "title": "...", "date": "...", "status": "agendado", "displayStatus": "Marcado", "hospitalName": "...", "doctorName": null }],
+    "history": [{ "id": "...", "title": "...", "date": "...", "status": "concluido", "displayStatus": "Realizado", "hospitalName": "...", "doctorName": null }],
+    "summary": { "total": 4, "marcados": 1, "realizados": 1, "cancelados": 1, "perdidos": 1 }
   }
 }
 ```
+
+**Fase 5a (evolução pós-Fase 7):** o Agente de Agendamentos deixou de considerar só o futuro — agora retorna também o histórico (`history`) e contagens por status (`summary`), incluindo `"Perdido"`, um status **calculado** (não persistido no Firestore) para agendamentos com `status` `"agendado"`/`"confirmado"` cuja data já passou. Decisão registrada em `claude/avaliacao-evolucao-pre-fase8.md` — evita migração de dado e não exige nenhum job em segundo plano. Nenhuma mudança de schema, ferramenta MCP ou repositório foi necessária: a consulta ao Firestore já retornava todos os agendamentos, o filtro era aplicado no próprio agente.
 
 Cada chamada também gera uma linha de log estruturado no terminal do backend (`requestId`, `userId`, `intent`, `confidence`, `selectedAgent`, `toolUsed`, `latencyMs`, `success`) — a base da rastreabilidade que vira a coleção `agent_logs` na Fase 7.
 

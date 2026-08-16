@@ -121,3 +121,54 @@ export interface Referral {
   status: "pendente" | "agendado" | "concluido";
   notes?: string;
 }
+
+/**
+ * Dados enviados de `Encaminhamentos` para `NovoAgendamento` ao tocar em um
+ * encaminhamento (Ideia 3 avaliada em claude/avaliacao-evolucao-pre-fase8.md).
+ * Cobre apenas tipo + especialidade — `referrals` não tem unidade nem médico
+ * de execução, então esses campos continuam sendo escolha do paciente.
+ */
+export interface ReferralPrefill {
+  type: "consulta" | "cirurgia";
+  /**
+   * Nome da especialidade do encaminhamento (ex.: "Cardiologia"). Só é usado
+   * para casar com `specialties` quando `type === "consulta"` — para
+   * "cirurgia" não há campo equivalente em `NovoAgendamento` (o formulário
+   * usa `surgeryTypes`, uma taxonomia diferente de procedimento específico,
+   * ex.: "Cirurgia de ombro", não de especialidade médica), então nesse caso
+   * o valor só é usado para exibir o aviso ao paciente.
+   */
+  specialtyName: string;
+  /** ID do encaminhamento de origem — evita reaplicar o mesmo prefill repetidamente ao reabrir a aba "Agendar". */
+  sourceReferralId: string;
+}
+
+/**
+ * Dados enviados de `Agendamentos` para `NovoAgendamento` ao remarcar um
+ * agendamento cancelado (Ideia 5, `claude/avaliacao-ajustes-2.0.md`).
+ *
+ * Diferente de `ReferralPrefill` (que só tem o NOME da especialidade, exigindo
+ * casamento por texto), aqui o agendamento de origem já guarda os IDs reais de
+ * `hospitalId`/`specialtyId`/`doctorId` — reaproveitados diretamente, sem
+ * risco de casamento incorreto. A única exceção é `type === "exame" |
+ * "cirurgia"`: `Appointment` não guarda `examTypeId`/`surgeryTypeId` (só usados
+ * de forma transiente em `NovoAgendamento` para compor `title`), então para
+ * esses dois tipos o casamento é por nome (`examOrSurgeryName` contra
+ * `examTypes`/`surgeryTypes`), mesmo padrão já usado em `ReferralPrefill` para
+ * especialidade.
+ *
+ * Deliberadamente NÃO inclui data/horário — a Ideia 5 exige que o paciente
+ * escolha uma nova data/horário manualmente ao remarcar.
+ */
+export interface AppointmentPrefill {
+  type: AppointmentType;
+  hospitalId: string;
+  /** Reaproveitado direto (sem casamento por nome) — só relevante para "consulta"/"online". */
+  specialtyId?: string;
+  /** Reaproveitado direto (sem casamento por nome), quando o agendamento original tinha médico definido. */
+  doctorId?: string;
+  /** Nome do exame/cirurgia (= `Appointment.title` para esses 2 tipos) — usado só quando `type` é "exame" ou "cirurgia", para casar contra `examTypes`/`surgeryTypes`. */
+  examOrSurgeryName?: string;
+  /** ID do agendamento de origem — evita reaplicar o mesmo prefill repetidamente ao reabrir a aba "Agendar". */
+  sourceAppointmentId: string;
+}

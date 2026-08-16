@@ -8,6 +8,7 @@ import EncaminhamentosScreen from "@/screens/Encaminhamentos";
 import PerfilScreen from "@/screens/Perfil";
 import UnidadesProximasScreen from "@/screens/UnidadesProximas";
 import AgenteIAScreen from "@/screens/AgenteIA";
+import type { ReferralPrefill, AppointmentPrefill } from "@/types";
 
 // ── Param lists ──────────────────────────────────────────────────────────────
 
@@ -18,7 +19,11 @@ export type HomeStackParamList = {
 
 export type AgendamentosStackParamList = {
   Agendamentos: undefined;
-  NovoAgendamento: undefined;
+  // Ideia 3 (claude/avaliacao-evolucao-pre-fase8.md): aceita um prefill opcional
+  // vindo de "Encaminhamentos", pelo mesmo caminho usado pela aba "Agendar".
+  // Ideia 5 (claude/avaliacao-ajustes-2.0.md): também aceita `AppointmentPrefill`,
+  // vindo do próprio `Agendamentos.tsx` ao remarcar um agendamento cancelado.
+  NovoAgendamento: { prefill?: ReferralPrefill | AppointmentPrefill } | undefined;
 };
 
 export type ResultadosStackParamList = {

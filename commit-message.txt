@@ -1,0 +1,44 @@
+﻿Ideias 1, 3, 4a, 4b, 5a e ajustes 2.0: menu lateral, encaminhamento pre-preenchido, metricas 30 dias, score de saude, agente de agendamentos ampliado, e lote de ajustes 2.0
+
+Ideia 1 - Menu lateral
+- Novo componente AppMenuModal (painel lateral com as 8 telas, ordem alfabetica)
+- TabNavigator/StacksNavigator: toque em "Menu" abre o painel em vez de navegar direto
+
+Ideia 3 - Encaminhamento -> Novo Agendamento pre-preenchido
+- Novo tipo ReferralPrefill (types/index.ts)
+- Encaminhamentos.tsx: toque no card navega para "Agendar" com tipo/especialidade pre-preenchidos
+- NovoAgendamento.tsx: aplica o prefill e exibe aviso de origem
+
+Ideia 4a - Home: "Suas Metricas" com janela de 30 dias
+- Home.tsx: consultas/exames/prescricoes passam a refletir só os ultimos 30 dias
+
+Ideia 4b - Home: "Saude em Dia" com score real (backend)
+- Novo: backend/src/services/healthScore.service.ts
+- Novo: backend/src/repositories/referrals.repository.ts
+- Novo: backend/src/controllers/patients.controller.ts
+- Novo: backend/src/routes/patients.routes.ts
+- app.ts: registra o router de patients
+- Novo: mobile/src/services/healthScoreApi.ts
+- Home.tsx: card "Saude em Dia" passa a consumir o score do backend
+
+Ideia 5a - Agente de Agendamentos ampliado
+- appointmentsAgent.ts: consulta ampliada (historico completo) e diferenciacao de status
+
+Ajustes 2.0 (lote 1)
+- Item 2: Agendamentos.tsx - ordenacao explicita de Proximos (ascendente) e Historico (descendente)
+- Item 4: Home.tsx - Acesso Rapido substitui os 3 numeros no topo do degrade
+- Item 3: Home.tsx - "Alertas Importantes" mostra o item mais relevante (encaminhamento pendente > agendamento perdido > prescricao recente > resultado recente)
+- Item 1: AgenteIA.tsx / NovoAgendamento.tsx - Enter envia/fecha teclado em vez de quebrar linha (submitBehavior)
+- Ajuste extra: Home.tsx - Acesso Rapido troca Teleconsulta/Perfil por Prescricoes/Encaminhamentos
+
+Ideia 5 - Confirmar / Cancelar / Remarcar agendamento
+- Novo tipo AppointmentPrefill (types/index.ts)
+- Agendamentos.tsx: botoes Confirmar/Cancelar por status, com updateDoc direto no Firestore
+- NovoAgendamento.tsx: aplica AppointmentPrefill ao remarcar (data/hora ficam em branco)
+- StacksNavigator.tsx / TabNavigator.tsx: parametros de rota aceitam ReferralPrefill | AppointmentPrefill
+
+Correcoes pos-teste real
+- AgenteIA.tsx: guard sincrono (useRef) contra envio duplicado de mensagem no Enter
+- Home.tsx: goToTab reseta a stack ate a tela raiz da aba antes de navegar (corrige "voltar" indo para tela errada)
+
+Atualizacao de README do backend

@@ -10,7 +10,7 @@ import {
 import { collection, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import { db } from "@/config/firebase";
 import { useAuth } from "@/contexts/AuthContext";
-import { Appointment, MedicalResult } from "@/types";
+import { Appointment, MedicalResult, Prescription } from "@/types";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -24,19 +24,30 @@ import {
   MapPin,
   MessageSquare,
   Moon,
+  Pill,
   Plus,
+  Send,
   TrendingUp,
-  Video,
 } from "lucide-react-native";
 import { Card } from "@/components/Card";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "@/navigation/StacksNavigator";
+import { fetchHealthScore, type HealthScoreResponse } from "@/services/healthScoreApi";
 
 interface Stats {
   proximas: number;
   realizados: number;
   resultados: number;
+  /**
+   * Ideia 4a (claude/avaliacao-evolucao-pre-fase8.md): `consultas`, `exames`
+   * e `prescricoes` alimentam o card "Suas Métricas" — que já dizia "Últimos
+   * 30 dias" na tela, mas antes contava o histórico inteiro do paciente
+   * (sem filtro de data). Agora refletem só a janela móvel dos últimos 30
+   * dias. `proximas`/`realizados`/`resultados` (tiles do topo) permanecem
+   * como estavam — não fazem parte do card "Suas Métricas" e não foram
+   * mencionados no escopo desta ideia.
+   */
   consultas: number;
   exames: number;
   prescricoes: number;
@@ -48,7 +59,15 @@ export default function Home() {
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const [next, setNext] = useState<Appointment[]>([]);
   const [lastResult, setLastResult] = useState<MedicalResult | null>(null);
-  const [progress, setProgress] = useState(0);
+  // Ideia 2.0-#3 (claude/avaliacao-ajustes-2.0.md): prescrição mais recente
+  // do paciente (sem filtro de 30 dias — diferente da contagem usada em
+  // "Suas Métricas"), um dos critérios de prioridade de "Alertas Importantes".
+  const [lastPrescription, setLastPrescription] = useState<Prescription | null>(null);
+  // Ideia 4b (claude/ideia4b-score-saude-dia-proposta.md): o score não é
+  // mais calculado aqui — vem pronto do backend
+  // (`GET /api/patients/me/health-score`). `null` = ainda carregando ou
+  // paciente inelegível (sem nenhum agendamento registrado).
+  const [healthScore, setHealthScore] = useState<HealthScoreResponse | null>(null);
   const [stats, setStats] = useState<Stats>({
     proximas: 0, realizados: 0, resultados: 0, consultas: 0, exames: 0, prescricoes: 0,
   });
@@ -63,6 +82,15 @@ export default function Home() {
 
       const now = new Date();
       const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString();
+
+      // Ideia 4a: janela móvel dos últimos 30 dias, para o card "Suas
+      // Métricas". Mesma conversão de fuso já usada acima em `localIso`
+      // (mantém consistência com o restante deste arquivo — ver nota de
+      // rastreabilidade em `claude/ideia4a-metricas-30-dias-status.md`).
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const thirtyDaysAgoIso = new Date(
+        thirtyDaysAgo.getTime() - thirtyDaysAgo.getTimezoneOffset() * 60000
+      ).toISOString();
 
       const upcomingQ = query(
         collection(db, "appointments"),
@@ -79,6 +107,22 @@ export default function Home() {
         query(collection(db, "appointments"), where("patientUid", "==", user.uid))
       );
       const allAppts = allApptsSnap.docs.map((d) => d.data() as Appointment);
+
+      // Ideia 4a: agendamentos (consultas/exames) dos últimos 30 dias, para
+      // o card "Suas Métricas" — consulta separada de `allApptsSnap` (usada
+      // em `realizados`, que continua sendo histórico completo).
+      const last30dApptsSnap = await getDocs(
+        query(
+          collection(db, "appointments"),
+          where("patientUid", "==", user.uid),
+          where("date", ">=", thirtyDaysAgoIso),
+          where("date", "<=", localIso)
+        )
+      ).catch((error) => {
+        console.log("Error fetching last30dApptsSnap", error);
+        return { docs: [] } as any;
+      });
+      const last30dAppts = last30dApptsSnap.docs.map((d: any) => d.data() as Appointment);
 
       const resultsSnap = await getDocs(
         query(collection(db, "results"), where("patientUid", "==", user.uid))
@@ -103,25 +147,61 @@ export default function Home() {
           : null
       );
 
+      // Ideia 2.0-#3: prescrição mais recente (todo o histórico, não só os
+      // últimos 30 dias — critério de prioridade de "Alertas Importantes",
+      // diferente da contagem de "Suas Métricas" abaixo).
+      const latestPrescriptionSnap = await getDocs(
+        query(
+          collection(db, "prescriptions"),
+          where("patientUid", "==", user.uid),
+          orderBy("date", "desc"),
+          limit(1)
+        )
+      ).catch((error) => {
+        console.log("Error fetching latest prescription snap", error);
+        return { docs: [] } as any;
+      });
+      setLastPrescription(
+        latestPrescriptionSnap.docs.length > 0
+          ? ({ id: latestPrescriptionSnap.docs[0].id, ...latestPrescriptionSnap.docs[0].data() } as Prescription)
+          : null
+      );
 
-
-      const prescSnap = await getDocs(
-        query(collection(db, "prescriptions"), where("patientUid", "==", user.uid))
-      ).catch(() => ({ size: 0 } as any));
+      // Ideia 4a: prescrições dos últimos 30 dias (mesma janela dos agendamentos acima).
+      const last30dPrescSnap = await getDocs(
+        query(
+          collection(db, "prescriptions"),
+          where("patientUid", "==", user.uid),
+          where("date", ">=", thirtyDaysAgoIso),
+          where("date", "<=", localIso)
+        )
+      ).catch((error) => {
+        console.log("Error fetching last30dPrescSnap", error);
+        return { size: 0 } as any;
+      });
 
       let realizados = allAppts.filter((a) => a.status === "concluido").length;
-      let progressGoal = 5
-      let progress = realizados / (progressGoal) * 100;
-      if (progress > 100) progress = 100;
-      setProgress(progress);
+
+      // Ideia 4b: score buscado do backend, não mais calculado aqui.
+      // Falha ao buscar não deve travar o resto da Home — o card
+      // simplesmente some (mesmo tratamento de "sem dado" que os demais
+      // blocos desta função já usam, ex.: `resultsSnap`/`latestResultSnap`).
+      try {
+        const idToken = await user.getIdToken();
+        const score = await fetchHealthScore(idToken);
+        setHealthScore(score);
+      } catch (error) {
+        console.log("Error fetching health score", error);
+        setHealthScore(null);
+      }
 
       setStats({
         proximas: upcoming.length,
         realizados: realizados,
         resultados: resultsSnap.size ?? 0,
-        consultas: allAppts.filter((a: any) => a.type === "consulta").length,
-        exames: allAppts.filter((a: any) => a.type === "exame").length,
-        prescricoes: prescSnap.size ?? 0,
+        consultas: last30dAppts.filter((a: any) => a.type === "consulta").length,
+        exames: last30dAppts.filter((a: any) => a.type === "exame").length,
+        prescricoes: last30dPrescSnap.size ?? 0,
       });
     } catch (e) {
       console.error(e);
@@ -145,13 +225,85 @@ export default function Home() {
   const firstName = patient?.fullName?.split(" ")[0] ?? "Paciente";
   const featured = next[0];
 
+  // Tela raiz de cada stack aninhada alcançável por `goToTab` — usada para
+  // resetar a stack antes de empurrar o destino (ver comentário abaixo).
+  // "Agendar" não entra aqui: é a própria tela `NovoAgendamento`, sem stack
+  // própria (Tab.Screen direto em `TabNavigator.tsx`).
+  const TAB_ROOT_SCREEN: Record<string, string> = {
+    Resultados: "Resultados",
+    Menu: "Perfil",
+  };
+
+  /**
+   * Correção pós-teste real (bug pré-existente, não introduzido pela Ideia
+   * 2.0-#4): `navigate(tabName, { screen })` do React Navigation, quando o
+   * destino ainda não é a tela focada da stack aninhada, EMPILHA o destino em
+   * cima do que já estiver lá — não reseta a stack. Reportado assim: tocar
+   * "Prescrições" e depois "Encaminhamentos" (os dois no Acesso Rápido da
+   * Home) resultava em "voltar" de Encaminhamentos caindo em Prescrições, não
+   * na Home. O bug já existia antes (a seção "Explorar Mais" tem os mesmos 2
+   * atalhos há mais tempo) — só ficou mais fácil de reproduzir agora que os
+   * dois atalhos estão lado a lado no topo.
+   *
+   * Correção: navega primeiro para a tela raiz da stack de destino (um
+   * `navigate` para uma rota já existente na stack apenas FECHA o que estiver
+   * em cima dela, sem empilhar de novo) e só depois para a tela pedida — as
+   * duas chamadas acontecem no mesmo tick, então o usuário não vê a raiz
+   * "piscar" no meio da transição.
+   */
   const goToTab = (tabName: string, screen?: string) => {
     if (screen) {
+      const root = TAB_ROOT_SCREEN[tabName];
+      if (root && root !== screen) {
+        (navigation as any).navigate(tabName, { screen: root });
+      }
       (navigation as any).navigate(tabName, { screen });
     } else {
       (navigation as any).navigate(tabName);
     }
   };
+
+  /**
+   * Ideia 2.0-#3 (claude/avaliacao-ajustes-2.0.md), versão V1 aprovada:
+   * "Alertas Importantes" passa a mostrar o item mais relevante entre um
+   * pequeno conjunto de critérios estáticos, em vez de sempre o último
+   * resultado disponível (que podia ser antigo mesmo havendo algo mais
+   * urgente). Prioridade: 1) encaminhamento pendente mais antigo ou
+   * agendamento perdido (já vêm priorizados nesta ordem em
+   * `healthScore.improvements`, reaproveitado da Ideia 4b — nenhuma
+   * chamada nova ao backend); 2) prescrição mais recente (informativo);
+   * 3) resultado disponível mais recente (comportamento anterior, agora
+   * como último critério, não único). Não tenta detectar "mudança recente"
+   * de status de verdade — isso exigiria um campo novo no schema
+   * (`statusChangedAt`), decisão explicitamente adiada (V2, não aprovada
+   * agora).
+   */
+  const topImprovement = healthScore?.improvements?.[0] ?? null;
+  const topAlert = topImprovement
+    ? {
+        icon: topImprovement.type === "referral_pending" ? Send : Calendar,
+        title: topImprovement.type === "referral_pending" ? "Encaminhamento pendente" : "Agendamento perdido",
+        subtitle: topImprovement.message,
+        onPress: () =>
+          topImprovement.type === "referral_pending"
+            ? goToTab("Resultados", "Encaminhamentos")
+            : navigation.navigate("Agendamentos"),
+      }
+    : lastPrescription
+    ? {
+        icon: Pill,
+        title: lastPrescription.medications?.[0]?.name ?? "Nova prescrição",
+        subtitle: `${lastPrescription.doctorName} · ${new Date(lastPrescription.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`,
+        onPress: () => goToTab("Resultados", "Prescricoes"),
+      }
+    : lastResult
+    ? {
+        icon: FileText,
+        title: lastResult.title,
+        subtitle: `${lastResult.hospitalName} · ${new Date(lastResult.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}`,
+        onPress: () => goToTab("Resultados"),
+      }
+    : null;
 
   return (
     <ScrollView
@@ -200,11 +352,26 @@ export default function Home() {
           </Text>
         </View>
 
-        {/* Stat tiles */}
+        {/* Ideia 2.0-#4 (claude/avaliacao-ajustes-2.0.md): ANTES, esta linha
+            mostrava 3 números (Próximas/Realizados/Resultados) — já
+            calculados a partir de dado real do Firestore, não estático,
+            mas repetitivos com os tiles do topo de `Agendamentos.tsx`/o
+            card "Alertas". DEPOIS, dá lugar ao "Acesso Rápido" (antes mais
+            abaixo, fundo branco) — variante `QuickIconHero`, estilizada
+            para contraste sobre o degradê.
+
+            Ajuste solicitado junto do Item 1 (Enter): "Teleconsulta" e
+            "Perfil" saem deste atalho de topo (Teleconsulta não corresponde
+            a nenhuma tela existente hoje — reaproveitava a rota "Agendar";
+            Perfil já está a um toque no menu lateral). No lugar entram
+            "Prescrições" e "Encaminhamentos" — telas já existentes,
+            reaproveitadas aqui só como atalho mais rápido (continuam
+            também disponíveis em "Explorar Mais", mais abaixo). */}
         <View style={{ flexDirection: "row", gap: 10, marginTop: 20 }}>
-          <StatTile value={stats.proximas} label="Próximas" />
-          <StatTile value={stats.realizados} label="Realizados" />
-          <StatTile value={stats.resultados} label="Resultados" />
+          <QuickIconHero icon={Calendar} label="Agendar" onPress={() => goToTab("Agendar")} />
+          <QuickIconHero icon={Pill} label="Prescrições" onPress={() => goToTab("Resultados", "Prescricoes")} />
+          <QuickIconHero icon={FileText} label="Resultados" onPress={() => goToTab("Resultados")} />
+          <QuickIconHero icon={Send} label="Encaminhamentos" onPress={() => goToTab("Resultados", "Encaminhamentos")} />
         </View>
       </LinearGradient>
 
@@ -229,14 +396,17 @@ export default function Home() {
         )}
       </View>
 
-      {/* Alertas */}
-      {lastResult && (
+      {/* Alertas — Ideia 2.0-#3: mostra `topAlert` (o item mais relevante
+          entre encaminhamento pendente, agendamento perdido, prescrição
+          recente ou resultado disponível — ver cálculo de `topAlert` acima),
+          não mais sempre o último resultado disponível. */}
+      {topAlert && (
         <View style={{ marginTop: 24, paddingHorizontal: 20 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <AlertCircle size={16} color="#f59e0b" />
             <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Alertas Importantes</Text>
           </View>
-          <TouchableOpacity onPress={() => goToTab("Resultados")} activeOpacity={0.8}>
+          <TouchableOpacity onPress={topAlert.onPress} activeOpacity={0.8}>
             <Card style={{
               elevation: 0,
               flexDirection: "row", alignItems: "center", gap: 12,
@@ -249,14 +419,14 @@ export default function Home() {
                 width: 36, height: 36, borderRadius: 18,
                 backgroundColor: "rgba(245,158,11,0.2)", alignItems: "center", justifyContent: "center",
               }}>
-                <AlertCircle size={16} color="#f59e0b" />
+                <topAlert.icon size={16} color="#f59e0b" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }} numberOfLines={1}>
-                  {lastResult.title}
+                  {topAlert.title}
                 </Text>
                 <Text style={{ fontSize: 12, color: "#6b7280" }} numberOfLines={1}>
-                  {lastResult.hospitalName} · {new Date(lastResult.date).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}
+                  {topAlert.subtitle}
                 </Text>
               </View>
               <ChevronRight size={16} color="#9ca3af" />
@@ -264,19 +434,6 @@ export default function Home() {
           </TouchableOpacity>
         </View>
       )}
-
-      {/* Acesso Rápido */}
-      <View style={{ marginTop: 24, paddingHorizontal: 20 }}>
-        <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 12 }}>
-          Acesso Rápido
-        </Text>
-        <View style={{ flexDirection: "row", gap: 12 }}>
-          <QuickIcon icon={Calendar} label="Agendar" onPress={() => goToTab("Agendar")} />
-          <QuickIcon icon={Video} label="Teleconsulta" onPress={() => goToTab("Agendar")} />
-          <QuickIcon icon={FileText} label="Resultados" onPress={() => goToTab("Resultados")} />
-          <QuickIcon icon={MessageSquare} label="Perfil" onPress={() => goToTab("Menu", "Perfil")} />
-        </View>
-      </View>
 
       {/* Métricas */}
       <View style={{ marginTop: 24, paddingHorizontal: 20, flexDirection: "row", gap: 12 }}>
@@ -292,25 +449,47 @@ export default function Home() {
             <MetricRow label="Prescrições" value={stats.prescricoes} />
           </View>
         </Card>
-        <Card style={{ elevation: 0, flex: 1, borderRadius: 16, borderWidth: 0, backgroundColor: "rgba(26,170,134,0.05)", padding: 16 }}>
-          <TrendingUp size={20} color="#1aaa86" />
-          <Text style={{ marginTop: 12, fontSize: 14, fontWeight: "600", color: "#111827" }}>
-            Saúde em Dia
-          </Text>
-          <Text style={{ fontSize: 11, color: "#6b7280" }}>Score de bem-estar</Text>
-          <View style={{ marginTop: 12 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <Text style={{ fontSize: 12, color: "#6b7280" }}>Progresso</Text>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: "#1aaa86" }}>{progress}%</Text>
+        {healthScore?.eligible && healthScore.score !== null ? (
+          <Card style={{ elevation: 0, flex: 1, borderRadius: 16, borderWidth: 0, backgroundColor: "rgba(26,170,134,0.05)", padding: 16 }}>
+            <TrendingUp size={20} color="#1aaa86" />
+            <Text style={{ marginTop: 12, fontSize: 14, fontWeight: "600", color: "#111827" }}>
+              Saúde em Dia
+            </Text>
+            <Text style={{ fontSize: 11, color: "#6b7280" }}>Score de bem-estar</Text>
+            <View style={{ marginTop: 12 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <Text style={{ fontSize: 12, color: "#6b7280" }}>Progresso</Text>
+                <Text style={{ fontSize: 12, fontWeight: "600", color: "#1aaa86" }}>{healthScore.score}%</Text>
+              </View>
+              <View style={{
+                marginTop: 6, height: 6, borderRadius: 3,
+                backgroundColor: "rgba(26,170,134,0.15)", overflow: "hidden",
+              }}>
+                <View style={{ width: `${healthScore.score}%`, height: "100%", borderRadius: 3, backgroundColor: "#1aaa86" }} />
+              </View>
             </View>
-            <View style={{
-              marginTop: 6, height: 6, borderRadius: 3,
-              backgroundColor: "rgba(26,170,134,0.15)", overflow: "hidden",
-            }}>
-              <View style={{ width: `${progress}%`, height: "100%", borderRadius: 3, backgroundColor: "#1aaa86" }} />
-            </View>
-          </View>
-        </Card>
+            {/* Ideia 4b: até 3 alertas acionáveis, priorizados pelo backend (`healthScore.service.ts`). */}
+            {healthScore.improvements.length > 0 && (
+              <View style={{ marginTop: 12, gap: 6 }}>
+                {healthScore.improvements.map((imp, i) => (
+                  <Text key={i} style={{ fontSize: 11, color: "#6b7280" }} numberOfLines={2}>
+                    • {imp.message}
+                  </Text>
+                ))}
+              </View>
+            )}
+          </Card>
+        ) : (
+          <Card style={{ elevation: 0, flex: 1, borderRadius: 16, borderWidth: 0, backgroundColor: "rgba(26,170,134,0.05)", padding: 16, justifyContent: "center" }}>
+            <TrendingUp size={20} color="#9ca3af" />
+            <Text style={{ marginTop: 12, fontSize: 14, fontWeight: "600", color: "#111827" }}>
+              Saúde em Dia
+            </Text>
+            <Text style={{ marginTop: 4, fontSize: 11, color: "#6b7280" }}>
+              Disponível após seu primeiro agendamento.
+            </Text>
+          </Card>
+        )}
       </View>
 
       {/* Próximos Agendamentos */}
@@ -360,15 +539,6 @@ export default function Home() {
         </Card>
       </View>
     </ScrollView>
-  );
-}
-
-function StatTile({ value, label }: { value: number; label: string }) {
-  return (
-    <View style={{ flex: 1, borderRadius: 16, backgroundColor: "rgba(255,255,255,0.15)", padding: 12, alignItems: "center" }}>
-      <Text style={{ fontSize: 24, fontWeight: "700", color: "#fff" }}>{value}</Text>
-      <Text style={{ fontSize: 11, color: "rgba(255,255,255,0.85)", marginTop: 4 }}>{label}</Text>
-    </View>
   );
 }
 
@@ -469,7 +639,15 @@ function SmallAppointmentCard({ a }: { a: Appointment }) {
   );
 }
 
-function QuickIcon({ icon: Icon, label, onPress }: {
+/**
+ * Ideia 2.0-#4 (claude/avaliacao-ajustes-2.0.md): variante de "Acesso
+ * Rápido" para uso DENTRO do hero em degradê (substituiu `QuickIcon`, que
+ * era pensado para fundo claro — fundo branco sólido com sombra ficaria
+ * com contraste ruim sobre o degradê verde/azul). Mesmo tratamento visual
+ * translúcido que os tiles de número já usavam (`rgba(255,255,255,0.15)`),
+ * ícone e texto em branco em vez de escuro.
+ */
+function QuickIconHero({ icon: Icon, label, onPress }: {
   icon: React.ComponentType<{ size: number; color: string }>;
   label: string;
   onPress: () => void;
@@ -478,13 +656,12 @@ function QuickIcon({ icon: Icon, label, onPress }: {
     <TouchableOpacity onPress={onPress} style={{ flex: 1, alignItems: "center", gap: 6 }}>
       <View style={{
         width: 52, height: 52, borderRadius: 16,
-        backgroundColor: "#fff", borderWidth: 1, borderColor: "#e5e7eb",
+        backgroundColor: "rgba(255,255,255,0.16)",
         alignItems: "center", justifyContent: "center",
-        shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
       }}>
-        <Icon size={22} color="#1aaa86" />
+        <Icon size={22} color="#fff" />
       </View>
-      <Text style={{ fontSize: 11, color: "#374151", textAlign: "center" }}>{label}</Text>
+      <Text style={{ fontSize: 11, color: "rgba(255,255,255,0.95)", textAlign: "center" }}>{label}</Text>
     </TouchableOpacity>
   );
 }

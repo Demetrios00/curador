@@ -74,10 +74,22 @@ export default function AgenteIA() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+  // Ideia 2.0-#1 (claude/avaliacao-ajustes-2.0.md) — correção pós-teste real:
+  // com `submitBehavior="submit"`, o teclado Android de alguns dispositivos
+  // dispara `onSubmitEditing` DUAS vezes para um único Enter (falha conhecida
+  // do RN em campos multiline no Android, independente da nossa lógica).
+  // Confirmado no teste real: a mensagem foi enviada duplicada. O guard
+  // `if (!text || loading) return` sozinho não bastava, porque as duas
+  // chamadas acontecem síncronas, no mesmo tick — antes de `setLoading(true)`
+  // (state do React) realmente propagar, então a segunda chamada ainda via
+  // `loading === false`. Um `ref` muda de valor imediatamente, de forma
+  // síncrona, então bloqueia a segunda chamada mesmo dentro do mesmo tick.
+  const sendingRef = useRef(false);
 
-  async function handleSend() {
-    const text = input.trim();
-    if (!text || loading) return;
+  async function handleSend(overrideText?: string) {
+    const text = (overrideText ?? input).trim();
+    if (!text || loading || sendingRef.current) return;
+    sendingRef.current = true;
 
     if (!user) {
       setMessages((prev) => [
@@ -135,6 +147,7 @@ export default function AgenteIA() {
       ]);
     } finally {
       setLoading(false);
+      sendingRef.current = false;
     }
   }
 
@@ -306,11 +319,24 @@ export default function AgenteIA() {
             value={input}
             onChangeText={setInput}
             multiline
-            onSubmitEditing={handleSend}
+            // Ideia 2.0-#1 (claude/avaliacao-ajustes-2.0.md): a primeira
+            // tentativa interceptava a quebra de linha no `onChangeText`
+            // (checando se o texto terminava em "\n"), mas isso se mostrou
+            // pouco confiável no teste real em dispositivo Android — o
+            // teclado inseriu a quebra sem o `onChangeText` reportar a
+            // string terminando em "\n" de forma consistente (varia por
+            // teclado/IME). `submitBehavior="submit"` é a solução nativa e
+            // documentada do React Native (RN 0.74+, substituindo o antigo
+            // `blurOnSubmit`) para isso: instrui o próprio campo a disparar
+            // `onSubmitEditing` no Enter em vez de inserir a quebra,
+            // mesmo sendo `multiline` — não depende de adivinhar o
+            // conteúdo reportado pelo teclado.
+            submitBehavior="submit"
+            onSubmitEditing={() => handleSend()}
             editable={!loading}
           />
           <TouchableOpacity
-            onPress={handleSend}
+            onPress={() => handleSend()}
             disabled={!input.trim() || loading}
             style={{
               width: 44,
