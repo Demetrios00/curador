@@ -120,12 +120,17 @@ export default function AgenteIA() {
         },
       ]);
     } catch (e: any) {
+      // Em desenvolvimento, mostramos o erro real (em vez de uma mensagem
+      // genérica) para facilitar o diagnóstico durante os testes do TCC —
+      // útil para diferenciar "backend fora do ar", "token inválido",
+      // "timeout" etc. sem precisar cruzar com o terminal do backend.
+      const detail = e instanceof Error ? e.message : String(e);
       setMessages((prev) => [
         ...prev,
         {
           id: Date.now().toString(),
           role: "assistant",
-          content: "Desculpe, ocorreu um erro ao processar sua mensagem. Verifique a conexão e tente novamente.",
+          content: `Desculpe, ocorreu um erro ao processar sua mensagem.\n\nDetalhe técnico: ${detail}`,
         },
       ]);
     } finally {
