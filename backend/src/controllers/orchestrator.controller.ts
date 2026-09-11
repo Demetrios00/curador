@@ -1,7 +1,8 @@
 import { randomUUID } from "crypto";
 import type { NextFunction, Response } from "express";
 
-import { handleAppointmentsRequest } from "../agents/appointments/appointmentsAgent";
+import { routeAppointmentsMessage } from "../agents/appointments/appointmentsRouter";
+import { confirmAppointmentDraft } from "../agents/appointments/scheduleAppointment";
 import { handleInstructionsRequest } from "../agents/instructions/instructionsAgent";
 import { classifyIntent } from "../agents/orchestrator/classifyIntent";
 import { handleResultsRequest } from "../agents/results/resultsAgent";
@@ -13,6 +14,11 @@ import { AppError } from "../middleware/errorHandler";
 import { createAgentLog } from "../repositories/agentLogs.repository";
 import { logEvent } from "../utils/logger";
 
+// Nota: a intenção APPOINTMENTS não chama mais `handleAppointmentsRequest`
+// diretamente daqui — ele continua existindo, inalterado, em
+// `agents/appointments/appointmentsAgent.ts` (consulta, Fases 4/5a), mas
+// quem decide entre consultar e criar (Ideia 5b) é `routeAppointmentsMessage`.
+
 interface RouteRequestBody {
   message?: string;
   /**
@@ -21,6 +27,17 @@ interface RouteRequestBody {
    * intenção classificada é UNITS (ver `dispatchToAgent`/`parseLocation`).
    */
   location?: { latitude?: unknown; longitude?: unknown };
+  /**
+   * Ideia 5b (02/09/2026) — MUDANÇA DE CONTRATO: quando presente, este
+   * corpo NÃO passa pelo classificador de intenção nem por nenhum agente
+   * além do de Agendamentos. É o único jeito de um agendamento ser
+   * efetivamente gravado — o app reenvia, sem alteração, o mesmo
+   * `AppointmentDraft` que recebeu numa resposta anterior com
+   * `requiresConfirmation: true` (ver `agents/appointments/scheduleAppointment.ts`).
+   * Mutuamente exclusivo com `message`: quando `confirmDraft` está
+   * presente, `message` é ignorado.
+   */
+  confirmDraft?: unknown;
 }
 
 /**
@@ -74,6 +91,13 @@ function parseLocation(body: RouteRequestBody): { latitude: number; longitude: n
  * gravar o log NUNCA deve atrasar a resposta ao paciente, e não deve
  * contaminar a própria métrica de latência que o log existe para medir
  * (Seção 15 do projeto).
+ *
+ * Ideia 5b (02/09/2026): quando o corpo traz `confirmDraft`, o fluxo acima
+ * é desviado por completo — não há classificação de intenção nem escolha
+ * de agente, porque a decisão "isso é um agendamento" já foi tomada na
+ * chamada anterior (a que gerou o rascunho). Isso é deliberado: a
+ * confirmação de uma escrita não deve depender de a LLM reinterpretar
+ * texto livre de novo.
  */
 export async function postRoute(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   const requestId = randomUUID();
@@ -97,6 +121,50 @@ export async function postRoute(req: AuthenticatedRequest, res: Response, next: 
     }
 
     const body = req.body as RouteRequestBody;
+
+    // Ideia 5b: caminho de confirmação de agendamento — não usa `message`
+    // nem `classifyIntent`. Ver documentação do JSDoc acima.
+    if (body.confirmDraft !== undefined) {
+      const agentResult = await confirmAppointmentDraft(patientUid, body.confirmDraft);
+      const finishedAt = Date.now();
+      const latencyMs = finishedAt - startedAt;
+
+      logEvent("orchestrator.route", {
+        requestId,
+        userId: patientUid,
+        intent: "APPOINTMENTS",
+        confidence: 1,
+        selectedAgent: "appointments",
+        toolUsed: "mcp:create_appointment",
+        latencyMs,
+        success: true,
+      });
+
+      void createAgentLog({
+        requestId,
+        userId: patientUid,
+        userMessage: "[confirmDraft]",
+        intent: "APPOINTMENTS",
+        confidence: 1,
+        selectedAgent: "appointments",
+        toolUsed: "mcp:create_appointment",
+        startedAt,
+        finishedAt,
+        latencyMs,
+        success: true,
+        error: null,
+      });
+
+      res.status(200).json({
+        requestId,
+        intent: "APPOINTMENTS",
+        confidence: 1,
+        agent: "appointments",
+        result: agentResult,
+      });
+      return;
+    }
+
     message = body.message?.trim() ?? "";
 
     if (!message) {
@@ -106,7 +174,7 @@ export async function postRoute(req: AuthenticatedRequest, res: Response, next: 
     const location = parseLocation(body);
 
     const classification = await classifyIntent(message);
-    const { selectedAgent, agentResult, toolUsed } = await dispatchToAgent(classification.intent, patientUid, location);
+    const { selectedAgent, agentResult, toolUsed } = await dispatchToAgent(classification.intent, patientUid, message, location);
     const finishedAt = Date.now();
     const latencyMs = finishedAt - startedAt;
 
@@ -179,19 +247,23 @@ export async function postRoute(req: AuthenticatedRequest, res: Response, next: 
  * Único ponto de decisão "intenção → agente". Adicionar um novo agente no
  * futuro significa só adicionar um `case` aqui — nenhum outro arquivo do
  * orquestrador muda (Seção 15 do projeto: extensibilidade).
+ *
+ * Ideia 5b: o `case "APPOINTMENTS"` passou a delegar a
+ * `routeAppointmentsMessage`, que decide internamente entre consultar
+ * (Fases 4/5a) e montar um rascunho de criação (Ideia 5b) — o orquestrador
+ * em si não sabe (nem precisa saber) que essa decisão interna existe.
  */
 async function dispatchToAgent(
   intent: Intent,
   patientUid: string,
+  message: string,
   location: { latitude: number; longitude: number } | null
 ): Promise<{ selectedAgent: string | null; agentResult: unknown; toolUsed: string | null }> {
   switch (intent) {
-    case "APPOINTMENTS":
-      return {
-        selectedAgent: "appointments",
-        agentResult: await handleAppointmentsRequest(patientUid),
-        toolUsed: "mcp:list_user_appointments",
-      };
+    case "APPOINTMENTS": {
+      const { agentResult, toolUsed } = await routeAppointmentsMessage(patientUid, message);
+      return { selectedAgent: "appointments", agentResult, toolUsed };
+    }
     case "INSTRUCTIONS":
       return {
         selectedAgent: "instructions",
