@@ -7,6 +7,10 @@ interface OpenRouterProviderConfig {
   model: string;
   /** Limite de tempo da chamada HTTP, em ms. Sem isto, uma rede lenta/instável deixa a requisição pendurada para sempre. */
   timeoutMs?: number;
+  /** Modelos de fallback (recurso nativo da OpenRouter: campo `models`). */
+  fallbackModels?: string[];
+  maxTokens?: number;
+  disableReasoning?: boolean;
 }
 
 const DEFAULT_TIMEOUT_MS = 20_000;
@@ -43,7 +47,7 @@ export class OpenRouterProvider implements LLMProvider {
           "HTTP-Referer": "https://curador.app",
           "X-Title": "CuraDor",
         },
-        body: JSON.stringify({ model: this.config.model, messages }),
+        body: JSON.stringify(this.buildBody(messages)),
         signal: AbortSignal.timeout(this.config.timeoutMs ?? DEFAULT_TIMEOUT_MS),
       });
     } catch (err) {
@@ -73,10 +77,46 @@ export class OpenRouterProvider implements LLMProvider {
       );
     }
 
-    const data = (await response.json()) as {
-      choices?: { message?: { content?: string } }[];
-    };
+    // Correção 18/10 (teste em dispositivo físico): a OpenRouter devolve os
+    // cabeçalhos imediatamente e só depois transmite o corpo; com modelos de
+    // raciocínio lentos, o tempo limite estourava DURANTE a leitura do corpo,
+    // fora do try/catch acima, e virava um 500 genérico ("Erro interno").
+    let data: { choices?: { message?: { content?: string } }[] };
+    try {
+      data = (await response.json()) as typeof data;
+    } catch (err) {
+      if (err instanceof Error && err.name === "TimeoutError") {
+        console.error("[openrouter-provider] tempo limite excedido durante a geração da resposta");
+        throw new AppError(
+          "O provedor de LLM demorou demais para responder. Tente novamente.",
+          504,
+          "LLM_TIMEOUT"
+        );
+      }
+      throw new AppError("Resposta inválida do provedor de LLM.", 502, "LLM_INVALID_RESPONSE");
+    }
 
     return data.choices?.[0]?.message?.content ?? "Não foi possível obter uma resposta.";
+  }
+
+  /**
+   * Corpo da requisição. `models` ativa o fallback nativo da OpenRouter
+   * (troca de modelo em caso de erro/limite do principal); `reasoning`
+   * desliga o raciocínio estendido — os prompts do CuraDor (classificação
+   * de intenção, extração de campos) exigem respostas curtas e diretas.
+   */
+  private buildBody(messages: ChatMessage[]): Record<string, unknown> {
+    const body: Record<string, unknown> = {
+      model: this.config.model,
+      messages,
+      max_tokens: this.config.maxTokens ?? 1024,
+    };
+    if (this.config.fallbackModels && this.config.fallbackModels.length > 0) {
+      body.models = [this.config.model, ...this.config.fallbackModels];
+    }
+    if (this.config.disableReasoning !== false) {
+      body.reasoning = { enabled: false };
+    }
+    return body;
   }
 }

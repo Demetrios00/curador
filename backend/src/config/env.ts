@@ -16,6 +16,14 @@ interface EnvConfig {
   llmApiKey: string;
   llmBaseUrl: string;
   llmModel: string;
+  /** Modelos alternativos (separados por vírgula), usados pela OpenRouter como fallback automático em erro/limite do modelo principal. */
+  llmFallbackModels: string[];
+  /** Limite de tempo de cada chamada ao LLM, incluindo a leitura da resposta (ms). */
+  llmTimeoutMs: number;
+  /** Limite de tokens gerados por chamada (respostas do CuraDor são curtas). */
+  llmMaxTokens: number;
+  /** Desliga o "raciocínio" estendido dos modelos que o suportam (reduz latência). */
+  llmDisableReasoning: boolean;
   /** Credenciais do service account do Firebase Admin. Vazias = rotas que dependem do Firestore retornam erro 500 controlado. */
   firebaseProjectId: string;
   firebaseClientEmail: string;
@@ -36,7 +44,14 @@ function readEnv(): EnvConfig {
     port,
     llmApiKey: process.env.LLM_API_KEY ?? "",
     llmBaseUrl: process.env.LLM_BASE_URL ?? "https://openrouter.ai/api/v1",
-    llmModel: process.env.LLM_MODEL ?? "nvidia/nemotron-3-nano-30b-a3b:free",
+    llmModel: process.env.LLM_MODEL ?? "nvidia/nemotron-3.5-lightning:free",
+    llmFallbackModels: (process.env.LLM_FALLBACK_MODELS ?? "")
+      .split(",")
+      .map((m) => m.trim())
+      .filter(Boolean),
+    llmTimeoutMs: Number(process.env.LLM_TIMEOUT_MS ?? 30000),
+    llmMaxTokens: Number(process.env.LLM_MAX_TOKENS ?? 1024),
+    llmDisableReasoning: (process.env.LLM_DISABLE_REASONING ?? "true") !== "false",
     firebaseProjectId: process.env.FIREBASE_PROJECT_ID ?? "",
     firebaseClientEmail: process.env.FIREBASE_CLIENT_EMAIL ?? "",
     // Chaves privadas em .env costumam vir com "\n" escapado — convertemos para quebra de linha real.

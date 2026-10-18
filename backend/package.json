@@ -12,7 +12,8 @@
     "seed:instructions": "ts-node --transpile-only scripts/seedInstructions.ts",
     "seed:test-appointments": "ts-node --transpile-only scripts/seedTestAppointments.ts",
     "seed:test-results": "ts-node --transpile-only scripts/seedTestResults.ts",
-    "loadtest:orchestrator": "ts-node --transpile-only scripts/orchestratorLoadTest.ts"
+    "loadtest:orchestrator": "ts-node --transpile-only scripts/orchestratorLoadTest.ts",
+    "llm:probe": "ts-node --transpile-only scripts/llmProbe.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",

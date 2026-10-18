@@ -12,6 +12,10 @@ export const llmProvider: LLMProvider = new OpenRouterProvider({
   apiKey: env.llmApiKey,
   baseUrl: env.llmBaseUrl,
   model: env.llmModel,
+  fallbackModels: env.llmFallbackModels,
+  timeoutMs: env.llmTimeoutMs,
+  maxTokens: env.llmMaxTokens,
+  disableReasoning: env.llmDisableReasoning,
 });
 
 export type { ChatMessage, LLMProvider } from "./types";

@@ -25,7 +25,9 @@
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://localhost:3333";
 
 /** Sem limite de tempo, uma rede lenta ou o backend fora do ar deixaria o chat "Digitando..." para sempre. */
-const REQUEST_TIMEOUT_MS = 25_000;
+// 18/10: acima do limite do backend (30s por chamada ao LLM), para que o
+// app receba a mensagem de erro do servidor em vez de abortar antes.
+const REQUEST_TIMEOUT_MS = 45_000;
 
 export type Intent = "APPOINTMENTS" | "INSTRUCTIONS" | "RESULTS" | "UNITS" | "UNKNOWN";
 
