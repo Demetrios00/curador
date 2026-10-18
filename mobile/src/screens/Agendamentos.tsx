@@ -31,7 +31,21 @@ const statusVariant: Record<string, "warning" | "default" | "success" | "destruc
   confirmado: "default",
   concluido: "success",
   cancelado: "destructive",
+  perdido: "destructive",
 };
+
+/**
+ * Correção 18/10 (teste em dispositivo físico): agendamento "agendado" ou
+ * "confirmado" cuja data já passou aparecia no Histórico ainda como
+ * "agendado". Mesmo critério do Agente de Agendamentos no backend
+ * (`appointmentsAgent.ts`): "perdido" é CALCULADO na exibição, nunca
+ * persistido em `appointments.status`.
+ */
+function displayStatus(a: Appointment): string {
+  const isPast = new Date(a.date).getTime() < Date.now();
+  if (isPast && (a.status === "agendado" || a.status === "confirmado")) return "perdido";
+  return a.status;
+}
 
 export default function Agendamentos() {
   const { colors } = useTheme();
@@ -294,7 +308,7 @@ function AppointmentCard({
             ) : null}
           </View>
         </View>
-        <Badge variant={statusVariant[a.status] ?? "secondary"}>{a.status}</Badge>
+        <Badge variant={statusVariant[displayStatus(a)] ?? "secondary"}>{displayStatus(a)}</Badge>
       </View>
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>

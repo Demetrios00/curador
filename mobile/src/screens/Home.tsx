@@ -85,16 +85,17 @@ export default function Home() {
       // const nowIso = new Date().toISOString();
 
       const now = new Date();
-      const localIso = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString();
+      // Correção 18/10: `appointments.date` é gravado em UTC real (`toISOString()`
+      // em NovoAgendamento). O deslocamento manual de fuso usado antes fazia
+      // agendamentos de até 3h atrás aparecerem como "próximos".
+      const localIso = now.toISOString();
 
       // Ideia 4a: janela móvel dos últimos 30 dias, para o card "Suas
       // Métricas". Mesma conversão de fuso já usada acima em `localIso`
       // (mantém consistência com o restante deste arquivo — ver nota de
       // rastreabilidade em `claude/ideia4a-metricas-30-dias-status.md`).
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-      const thirtyDaysAgoIso = new Date(
-        thirtyDaysAgo.getTime() - thirtyDaysAgo.getTimezoneOffset() * 60000
-      ).toISOString();
+      const thirtyDaysAgoIso = thirtyDaysAgo.toISOString();
 
       const upcomingQ = query(
         collection(db, "appointments"),
@@ -105,7 +106,9 @@ export default function Home() {
       );
       const upcomingSnap = await getDocs(upcomingQ);
       const upcoming = upcomingSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })) as Appointment[];
-      setNext(upcoming.slice(0, 2));
+      // Cancelados não são "próximos agendamentos".
+      const upcomingActive = upcoming.filter((a) => a.status !== "cancelado");
+      setNext(upcomingActive.slice(0, 2));
 
       const allApptsSnap = await getDocs(
         query(collection(db, "appointments"), where("patientUid", "==", user.uid))
@@ -115,18 +118,13 @@ export default function Home() {
       // Ideia 4a: agendamentos (consultas/exames) dos últimos 30 dias, para
       // o card "Suas Métricas" — consulta separada de `allApptsSnap` (usada
       // em `realizados`, que continua sendo histórico completo).
-      const last30dApptsSnap = await getDocs(
-        query(
-          collection(db, "appointments"),
-          where("patientUid", "==", user.uid),
-          where("date", ">=", thirtyDaysAgoIso),
-          where("date", "<=", localIso)
-        )
-      ).catch((error) => {
-        console.log("Error fetching last30dApptsSnap", error);
-        return { docs: [] } as any;
-      });
-      const last30dAppts = last30dApptsSnap.docs.map((d: any) => d.data() as Appointment);
+      // Correção 18/10: filtro da janela feito em memória sobre `allAppts`
+      // (já carregado acima) — a consulta com intervalo exigia índice
+      // composto no Firestore e falhava para usuários novos. Cancelados
+      // não contam como consulta/exame realizado no período.
+      const last30dAppts = allAppts.filter(
+        (a: any) => a.date >= thirtyDaysAgoIso && a.date <= localIso && a.status !== "cancelado"
+      );
 
       const resultsSnap = await getDocs(
         query(collection(db, "results"), where("patientUid", "==", user.uid))
@@ -172,17 +170,17 @@ export default function Home() {
       );
 
       // Ideia 4a: prescrições dos últimos 30 dias (mesma janela dos agendamentos acima).
-      const last30dPrescSnap = await getDocs(
-        query(
-          collection(db, "prescriptions"),
-          where("patientUid", "==", user.uid),
-          where("date", ">=", thirtyDaysAgoIso),
-          where("date", "<=", localIso)
-        )
+      // Correção 18/10: mesma estratégia — busca por paciente e filtra a
+      // janela em memória, sem depender de índice composto.
+      const allPrescSnap = await getDocs(
+        query(collection(db, "prescriptions"), where("patientUid", "==", user.uid))
       ).catch((error) => {
-        console.log("Error fetching last30dPrescSnap", error);
-        return { size: 0 } as any;
+        console.log("Error fetching prescriptions", error);
+        return { docs: [] } as any;
       });
+      const last30dPrescCount = allPrescSnap.docs
+        .map((d: any) => d.data())
+        .filter((p: any) => typeof p.date === "string" && p.date >= thirtyDaysAgoIso && p.date <= localIso).length;
 
       let realizados = allAppts.filter((a) => a.status === "concluido").length;
 
@@ -205,7 +203,7 @@ export default function Home() {
         resultados: resultsSnap.size ?? 0,
         consultas: last30dAppts.filter((a: any) => a.type === "consulta").length,
         exames: last30dAppts.filter((a: any) => a.type === "exame").length,
-        prescricoes: last30dPrescSnap.size ?? 0,
+        prescricoes: last30dPrescCount,
       });
     } catch (e) {
       console.error(e);

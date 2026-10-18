@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Home, Calendar, Bot, FileText, Menu } from "lucide-react-native";
 import {
   HomeNavigator,
@@ -37,6 +38,10 @@ export function TabNavigator() {
   // que o `listeners.tabPress` do Tab.Screen "Menu" (abaixo) possa abri-lo.
   const [menuOpen, setMenuOpen] = useState(false);
   const { colors } = useTheme();
+  // Correção 18/10 (teste em dispositivo físico): com a navegação por gestos/
+  // botões do Android, a barra de abas ficava sobreposta à barra do sistema.
+  // A altura passa a somar o inset inferior real do aparelho.
+  const insets = useSafeAreaInsets();
 
   return (
     <>
@@ -49,8 +54,8 @@ export function TabNavigator() {
             borderTopWidth: 1,
             borderTopColor: colors.border,
             backgroundColor: colors.surface,
-            height: 60,
-            paddingBottom: 8,
+            height: 60 + insets.bottom,
+            paddingBottom: 8 + insets.bottom,
           },
           tabBarLabelStyle: {
             fontSize: 11,
