@@ -9,10 +9,11 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "node -r ts-node/register/transpile-only --test tests/classifyAppointmentAction.test.ts tests/schedulingContinuation.test.ts",
+    "test": "node -r ts-node/register/transpile-only --test tests/classifyAppointmentAction.test.ts tests/schedulingContinuation.test.ts tests/attendanceStatus.test.ts",
     "seed:instructions": "ts-node --transpile-only scripts/seedInstructions.ts",
     "seed:test-appointments": "ts-node --transpile-only scripts/seedTestAppointments.ts",
     "seed:test-results": "ts-node --transpile-only scripts/seedTestResults.ts",
+    "seed:demo-user": "ts-node --transpile-only scripts/seedDemoUser.ts",
     "loadtest:orchestrator": "ts-node --transpile-only scripts/orchestratorLoadTest.ts",
     "llm:probe": "ts-node --transpile-only scripts/llmProbe.ts"
   },

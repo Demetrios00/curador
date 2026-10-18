@@ -120,10 +120,10 @@ export default function Home() {
       // em `realizados`, que continua sendo histórico completo).
       // Correção 18/10: filtro da janela feito em memória sobre `allAppts`
       // (já carregado acima) — a consulta com intervalo exigia índice
-      // composto no Firestore e falhava para usuários novos. Cancelados
-      // não contam como consulta/exame realizado no período.
+      // composto no Firestore e falhava para usuários novos. Contam apenas
+      // atendimentos com presença confirmada (status "concluido").
       const last30dAppts = allAppts.filter(
-        (a: any) => a.date >= thirtyDaysAgoIso && a.date <= localIso && a.status !== "cancelado"
+        (a: any) => a.date >= thirtyDaysAgoIso && a.date <= localIso && a.status === "concluido"
       );
 
       const resultsSnap = await getDocs(
@@ -322,7 +322,12 @@ export default function Home() {
   const topAlert = topImprovement
     ? {
         icon: topImprovement.type === "referral_pending" ? Send : Calendar,
-        title: topImprovement.type === "referral_pending" ? "Encaminhamento pendente" : "Agendamento perdido",
+        title:
+          topImprovement.type === "referral_pending"
+            ? "Encaminhamento pendente"
+            : topImprovement.type === "attendance_pending"
+            ? "Confirme sua presença"
+            : "Agendamento perdido",
         subtitle: topImprovement.message,
         onPress: () =>
           topImprovement.type === "referral_pending"

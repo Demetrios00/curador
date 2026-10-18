@@ -14,7 +14,7 @@ export interface AppointmentRecord {
   doctorName: string | null;
   hospitalName: string;
   date: string;
-  status: "agendado" | "confirmado" | "concluido" | "cancelado" | string;
+  status: "agendado" | "confirmado" | "concluido" | "cancelado" | "perdido" | string;
   notes: string | null;
 }
 

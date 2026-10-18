@@ -15,7 +15,21 @@ import type { AppointmentRecord } from "../../repositories/appointments.reposito
  * é sempre refeito a partir do dado real, então uma atualização posterior do
  * registro (ex.: para "concluido") já reflete corretamente na próxima consulta.
  */
-export type AppointmentDisplayStatus = "Marcado" | "Realizado" | "Cancelado" | "Perdido";
+export type AppointmentDisplayStatus = "Marcado" | "Realizado" | "Cancelado" | "Perdido" | "Aguardando confirmação";
+
+/**
+ * Revisão 18/10/2026 (teste em dispositivo físico): marcar como "Perdido"
+ * no instante em que a data passa era injusto — o paciente pode ter ido e
+ * apenas não registrado. Nova regra:
+ * - o próprio paciente confirma a presença no app ("Compareci" → status
+ *   persistido `concluido`; "Não compareci" → status persistido `perdido`);
+ * - enquanto não confirma, um agendamento agendado/confirmado com data
+ *   passada fica "Aguardando confirmação" por ATTENDANCE_GRACE_DAYS dias;
+ * - só depois desse prazo, sem resposta, ele passa a ser exibido como
+ *   "Perdido" (cálculo, não gravação — mesmo princípio da Fase 5a).
+ */
+export const ATTENDANCE_GRACE_DAYS = 7;
+const ATTENDANCE_GRACE_MS = ATTENDANCE_GRACE_DAYS * 24 * 60 * 60 * 1000;
 
 export interface AppointmentWithDisplayStatus extends AppointmentRecord {
   displayStatus: AppointmentDisplayStatus;
@@ -28,6 +42,8 @@ export interface AppointmentsAgentSummary {
   realizados: number;
   cancelados: number;
   perdidos: number;
+  /** Agendamentos passados ainda sem confirmação de presença do paciente (dentro do prazo). */
+  aguardandoConfirmacao: number;
 }
 
 export interface AppointmentsAgentResult {
@@ -95,6 +111,7 @@ export async function handleAppointmentsRequest(patientUid: string): Promise<App
     realizados: withStatus.filter((a) => a.displayStatus === "Realizado").length,
     cancelados: withStatus.filter((a) => a.displayStatus === "Cancelado").length,
     perdidos: withStatus.filter((a) => a.displayStatus === "Perdido").length,
+    aguardandoConfirmacao: withStatus.filter((a) => a.displayStatus === "Aguardando confirmação").length,
   };
 
   return {
@@ -108,8 +125,11 @@ export async function handleAppointmentsRequest(patientUid: string): Promise<App
 export function computeDisplayStatus(a: AppointmentRecord, now: number): AppointmentDisplayStatus {
   if (a.status === "cancelado") return "Cancelado";
   if (a.status === "concluido") return "Realizado";
+  if (a.status === "perdido") return "Perdido"; // ausência declarada pelo paciente
   // "agendado" | "confirmado" | qualquer valor não previsto no schema atual
-  return new Date(a.date).getTime() < now ? "Perdido" : "Marcado";
+  const time = new Date(a.date).getTime();
+  if (time >= now) return "Marcado";
+  return now - time <= ATTENDANCE_GRACE_MS ? "Aguardando confirmação" : "Perdido";
 }
 
 function formatDate(iso: string): string {
@@ -125,6 +145,7 @@ function formatBreakdown(summary: AppointmentsAgentSummary): string | null {
   if (summary.realizados > 0) parts.push(`${summary.realizados} realizado(s)`);
   if (summary.cancelados > 0) parts.push(`${summary.cancelados} cancelado(s)`);
   if (summary.perdidos > 0) parts.push(`${summary.perdidos} perdido(s)`);
+  if (summary.aguardandoConfirmacao > 0) parts.push(`${summary.aguardandoConfirmacao} aguardando sua confirmação de presença`);
 
   if (parts.length === 0) return null;
   if (parts.length === 1) return parts[0];

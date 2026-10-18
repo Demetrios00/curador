@@ -32,19 +32,29 @@ const statusVariant: Record<string, "warning" | "default" | "success" | "destruc
   concluido: "success",
   cancelado: "destructive",
   perdido: "destructive",
+  realizado: "success",
+  "aguardando confirmação": "warning",
 };
 
 /**
- * Correção 18/10 (teste em dispositivo físico): agendamento "agendado" ou
- * "confirmado" cuja data já passou aparecia no Histórico ainda como
- * "agendado". Mesmo critério do Agente de Agendamentos no backend
- * (`appointmentsAgent.ts`): "perdido" é CALCULADO na exibição, nunca
- * persistido em `appointments.status`.
+ * Regra de status exibido (revisada em 18/10/2026, mesma regra do backend —
+ * `computeDisplayStatus` em `appointmentsAgent.ts`):
+ * - agendado/confirmado com data futura → status persistido;
+ * - agendado/confirmado com data passada há até ATTENDANCE_GRACE_DAYS dias →
+ *   "aguardando confirmação" (o paciente informa se compareceu);
+ * - depois desse prazo, sem resposta → "perdido" (calculado, não gravado);
+ * - "concluido" / "perdido" persistidos vêm da confirmação do paciente.
  */
+const ATTENDANCE_GRACE_DAYS = 7;
+const ATTENDANCE_GRACE_MS = ATTENDANCE_GRACE_DAYS * 24 * 60 * 60 * 1000;
+
+function isOpenPast(a: Appointment): boolean {
+  return (a.status === "agendado" || a.status === "confirmado") && new Date(a.date).getTime() < Date.now();
+}
+
 function displayStatus(a: Appointment): string {
-  const isPast = new Date(a.date).getTime() < Date.now();
-  if (isPast && (a.status === "agendado" || a.status === "confirmado")) return "perdido";
-  return a.status;
+  if (!isOpenPast(a)) return a.status === "concluido" ? "realizado" : a.status;
+  return Date.now() - new Date(a.date).getTime() <= ATTENDANCE_GRACE_MS ? "aguardando confirmação" : "perdido";
 }
 
 export default function Agendamentos() {
@@ -105,6 +115,40 @@ export default function Agendamentos() {
     } finally {
       setUpdatingId(null);
     }
+  };
+
+  /**
+   * 18/10/2026: o paciente informa se compareceu a um agendamento já passado
+   * (qualquer status aberto — agendado ou confirmado). "Compareci" grava
+   * `concluido`; "Não compareci" grava `perdido` e oferece remarcar.
+   */
+  const handleAttendance = (a: Appointment, attended: boolean) => {
+    Alert.alert(
+      attended ? "Confirmar presença" : "Registrar ausência",
+      attended
+        ? `Confirma que você compareceu a "${a.title}"?`
+        : `Confirma que você NÃO compareceu a "${a.title}"?`,
+      [
+        { text: "Voltar", style: "cancel" },
+        {
+          text: attended ? "Sim, compareci" : "Sim, não compareci",
+          onPress: async () => {
+            const status = attended ? "concluido" : "perdido";
+            setUpdatingId(a.id);
+            try {
+              await updateDoc(doc(db, "appointments", a.id), { status, attendanceConfirmedAt: Date.now() });
+              setItems((prev) => prev.map((item) => (item.id === a.id ? { ...item, status } : item)));
+              Toast.show({ type: "success", text1: attended ? "Presença confirmada" : "Ausência registrada" });
+              if (!attended) offerReschedule(a);
+            } catch (err: any) {
+              Toast.show({ type: "error", text1: "Erro ao registrar", text2: err?.message });
+            } finally {
+              setUpdatingId(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleCancelPress = (a: Appointment) => {
@@ -258,6 +302,9 @@ export default function Agendamentos() {
                   updating={updatingId === a.id}
                   onConfirm={() => handleConfirm(a)}
                   onCancel={() => handleCancelPress(a)}
+                  showAttendance={activeTab === "historico" && isOpenPast(a)}
+                  onAttended={() => handleAttendance(a, true)}
+                  onMissed={() => handleAttendance(a, false)}
                 />
               ))}
             </View>
@@ -275,6 +322,9 @@ function AppointmentCard({
   updating,
   onConfirm,
   onCancel,
+  showAttendance,
+  onAttended,
+  onMissed,
 }: {
   a: Appointment;
   colors: ThemePalette;
@@ -282,6 +332,9 @@ function AppointmentCard({
   updating: boolean;
   onConfirm: () => void;
   onCancel: () => void;
+  showAttendance?: boolean;
+  onAttended?: () => void;
+  onMissed?: () => void;
 }) {
   const d = new Date(a.date);
   // Ideia 5 (claude/avaliacao-ajustes-2.0.md): "Confirmar" só faz sentido
@@ -333,6 +386,41 @@ function AppointmentCard({
           </Text>
         </View>
       ) : null}
+
+      {showAttendance && (
+        <View style={{ gap: 8, marginTop: 2 }}>
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>Você compareceu a este atendimento?</Text>
+          <View style={{ flexDirection: "row", gap: 10 }}>
+            <TouchableOpacity
+              onPress={onAttended}
+              disabled={updating}
+              style={{
+                flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+                height: 38, borderRadius: 10, backgroundColor: updating ? colors.textSubtle : colors.primary,
+              }}
+              accessibilityLabel="Compareci"
+            >
+              {updating ? <ActivityIndicator size="small" color="#fff" /> : <Check size={15} color="#fff" />}
+              <Text style={{ fontSize: 13, fontWeight: "600", color: "#fff" }}>Compareci</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onMissed}
+              disabled={updating}
+              style={{
+                flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
+                height: 38, borderRadius: 10, borderWidth: 1,
+                borderColor: updating ? colors.borderInput : colors.danger,
+              }}
+              accessibilityLabel="Não compareci"
+            >
+              <X size={15} color={updating ? colors.textSubtle : colors.danger} />
+              <Text style={{ fontSize: 13, fontWeight: "600", color: updating ? colors.textSubtle : colors.danger }}>
+                Não compareci
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {(canConfirm || canCancel) && (
         <View style={{ flexDirection: "row", gap: 10, marginTop: 2 }}>

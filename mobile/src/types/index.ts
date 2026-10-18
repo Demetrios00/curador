@@ -2,7 +2,8 @@
 
 export type Gender = "M" | "F" | "Outro";
 export type AppointmentType = "consulta" | "exame" | "cirurgia" | "online";
-export type AppointmentStatus = "agendado" | "confirmado" | "concluido" | "cancelado";
+// "perdido" (18/10/2026): ausência DECLARADA pelo paciente ("Não compareci").
+export type AppointmentStatus = "agendado" | "confirmado" | "concluido" | "cancelado" | "perdido";
 export type ResultType = "exame" | "consulta";
 
 export interface Patient {

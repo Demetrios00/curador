@@ -27,7 +27,7 @@ export interface DomainScore {
   score: number;
 }
 
-export type ImprovementType = "referral_pending" | "appointment_missed" | "result_processing";
+export type ImprovementType = "attendance_pending" | "referral_pending" | "appointment_missed" | "result_processing";
 
 export interface Improvement {
   type: ImprovementType;
@@ -113,7 +113,7 @@ function computeAppointmentsDomain(appointments: AppointmentRecord[], now: numbe
     if (a.status === "cancelado") continue;
     const displayStatus = computeDisplayStatus(a, now);
     if (displayStatus === "Realizado") finalizados++;
-    else if (displayStatus === "Marcado" || displayStatus === "Perdido") pendentes++;
+    else if (displayStatus === "Marcado" || displayStatus === "Perdido" || displayStatus === "Aguardando confirmação") pendentes++;
   }
   return toDomainScore(finalizados, pendentes);
 }
@@ -152,6 +152,21 @@ function buildImprovements(
   now: number
 ): Improvement[] {
   const improvements: Improvement[] = [];
+
+  // 18/10/2026: prioridade máxima — confirmar presença em agendamentos
+  // passados ainda abertos (ação rápida do paciente, que também corrige o
+  // histórico e o próprio score).
+  const awaitingAttendance = appointments
+    .filter((a) => computeDisplayStatus(a, now) === "Aguardando confirmação")
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  for (const a of awaitingAttendance) {
+    if (improvements.length >= MAX_IMPROVEMENTS) return improvements;
+    improvements.push({
+      type: "attendance_pending",
+      message: `Você compareceu a ${a.title} de ${formatDateBR(a.date)}? Confirme no histórico.`,
+      refId: a.id,
+    });
+  }
 
   const pendingReferrals = referrals
     .filter((r) => r.status === "pendente")

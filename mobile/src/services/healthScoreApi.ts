@@ -19,7 +19,7 @@ export interface DomainScore {
   score: number;
 }
 
-export type ImprovementType = "referral_pending" | "appointment_missed" | "result_processing";
+export type ImprovementType = "attendance_pending" | "referral_pending" | "appointment_missed" | "result_processing";
 
 export interface Improvement {
   type: ImprovementType;
