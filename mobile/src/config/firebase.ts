@@ -1,4 +1,12 @@
 import { initializeApp } from "firebase/app";
+// O SDK do Firebase (firebase/auth) exporta "getReactNativePersistence" apenas
+// na variante runtime "react-native" do pacote @firebase/auth, mas o mapa de
+// "exports" do pacote publica a condicao "types" antes da condicao "react-native",
+// entao o TypeScript sempre resolve para as tipagens genericas (web) e nao enxerga
+// esse membro, mesmo com customConditions: ["react-native"] no tsconfig. Em tempo
+// de execucao o Metro resolve corretamente a condicao "react-native" e a funcao
+// existe e funciona normalmente (ver firebase/firebase-js-sdk#9316 e #7598).
+// @ts-expect-error - getReactNativePersistence existe em runtime mas nao esta tipado nesta versao do SDK
 import { initializeAuth, getReactNativePersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
