@@ -83,31 +83,35 @@ export interface ScheduleAgentResult {
 }
 
 /**
- * Classificador dedicado "consultar vs. criar", separado da extração de
- * campos (`extractAppointmentFields`) — responsabilidade única, prompt
- * pequeno e fácil de auditar isoladamente (Seção 21 do projeto: funções
- * pequenas). Roda ANTES da extração para não gastar uma extração completa
- * em mensagens que são só consulta (o caminho já validado nas Fases 4/5a).
+ * Classificador "consultar vs. criar".
+ *
+ * Correção 18/10/2026 (teste em dispositivo físico): a versão anterior usava
+ * uma chamada extra ao LLM só para esta decisão binária. Somada à
+ * classificação de intenção do orquestrador e à extração de campos, a
+ * criação de agendamento exigia TRÊS chamadas sequenciais ao LLM e
+ * ultrapassava o tempo limite do app com modelos gratuitos lentos.
+ *
+ * Decisão de projeto: a intenção do domínio (APPOINTMENTS) continua sendo
+ * decidida pelo LLM no orquestrador; dentro do domínio, a sub-ação é uma
+ * escolha binária com vocabulário pequeno e previsível ("agendar", "marcar",
+ * "criar"...), resolvida por regra determinística — mais rápida, sem custo,
+ * reprodutível e auditável. Na dúvida, cai em QUERY (somente leitura), o
+ * caminho seguro: nunca abre um fluxo de escrita por engano, e a escrita em
+ * si continua exigindo confirmação explícita do paciente.
  */
-export async function classifyAppointmentAction(message: string): Promise<"QUERY" | "CREATE"> {
-  const raw = await llmProvider.complete([
-    {
-      role: "system",
-      content:
-        'Classifique a mensagem de um paciente sobre agendamentos em EXATAMENTE uma destas duas categorias: ' +
-        '"QUERY" (perguntar sobre agendamentos que já existem — consultas, próximos compromissos, status, histórico) ou ' +
-        '"CREATE" (pedir para marcar/agendar algo novo). Responda SOMENTE com o JSON {"action":"QUERY"} ou {"action":"CREATE"}, sem nenhum texto antes ou depois.',
-    },
-    { role: "user", content: message },
-  ]);
+const CREATE_PATTERN =
+  /\b(agend(ar|e|a|ou|amento novo)|marc(ar|a)|marqu(e|em)|remarc(ar|a)|remarqu(e|em)|cri(ar|e|a)|nov[oa] (agendamento|consulta|exame)|(quero|desejo|gostaria de|preciso) (fazer |marcar )?(um |uma )?(novo |nova )?(agendamento|consulta|exame|cirurgia))\b/i;
 
-  const match = raw.match(/\{[\s\S]*\}/);
-  try {
-    const parsed = JSON.parse(match ? match[0] : raw) as { action?: unknown };
-    return parsed.action === "CREATE" ? "CREATE" : "QUERY";
-  } catch {
-    return "QUERY";
+export async function classifyAppointmentAction(message: string): Promise<"QUERY" | "CREATE"> {
+  const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const looksLikeQuestionAboutExisting = /\b(quais|qual|quando|tenho|meus|minhas|proxim[oa]s?|historico|status)\b/i.test(normalized);
+  const wantsToCreate = CREATE_PATTERN.test(normalized);
+  // "Quais agendamentos eu tenho?" contém "agendamentos", mas não um verbo
+  // de criação; "quero marcar..." vence mesmo contendo "quando".
+  if (wantsToCreate && !(looksLikeQuestionAboutExisting && !/\b(agend(ar|e)|marc(ar|a)|marque|cri(ar|e)|remarc(ar|a)|fazer)\b/i.test(normalized))) {
+    return "CREATE";
   }
+  return "QUERY";
 }
 
 interface ExtractedFields {
@@ -139,7 +143,9 @@ function currentDateTimeContext(): string {
   return `Agora é ${formatted} (horário de São Paulo/Brasília, UTC-3). Use esta referência para resolver datas relativas.`;
 }
 
-const EXTRACTION_PROMPT = `Você extrai dados estruturados de um pedido de agendamento de saúde em linguagem natural, em português do Brasil.
+// Função (e não constante): a data de referência precisa ser a do momento
+// da requisição, não a de quando o servidor foi iniciado.
+const buildExtractionPrompt = (): string => `Você extrai dados estruturados de um pedido de agendamento de saúde em linguagem natural, em português do Brasil.
 
 ${currentDateTimeContext()}
 
@@ -157,7 +163,7 @@ Responda SOMENTE com um JSON válido, sem nenhum texto antes ou depois, exatamen
 
 async function extractAppointmentFields(message: string): Promise<ExtractedFields> {
   const raw = await llmProvider.complete([
-    { role: "system", content: EXTRACTION_PROMPT },
+    { role: "system", content: buildExtractionPrompt() },
     { role: "user", content: message },
   ]);
 
