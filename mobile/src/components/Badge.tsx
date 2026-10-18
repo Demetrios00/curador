@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, type ViewStyle } from "react-native";
+import { useTheme } from "@/contexts/ThemeContext";
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline" | "success" | "warning";
 
@@ -9,7 +10,13 @@ interface BadgeProps {
   style?: ViewStyle;
 }
 
-const variantStyles: Record<BadgeVariant, { container: ViewStyle; text: { color: string } }> = {
+/**
+ * Ideia 2: `default`/`secondary`/`destructive`/`success`/`warning` usam
+ * pares de cor fixos (marca ou status semântico) — não dependem do tema.
+ * Só `outline` (borda + texto neutros, sem preenchimento) precisa mudar
+ * entre os temas, por isso é resolvida dentro do componente via `useTheme()`.
+ */
+const variantStyles: Record<Exclude<BadgeVariant, "outline">, { container: ViewStyle; text: { color: string } }> = {
   default: {
     container: { backgroundColor: "#1aaa86", borderWidth: 0 },
     text: { color: "#ffffff" },
@@ -22,10 +29,6 @@ const variantStyles: Record<BadgeVariant, { container: ViewStyle; text: { color:
     container: { backgroundColor: "#ef4444", borderWidth: 0 },
     text: { color: "#ffffff" },
   },
-  outline: {
-    container: { backgroundColor: "transparent", borderWidth: 1, borderColor: "#d1d5db" },
-    text: { color: "#374151" },
-  },
   success: {
     container: { backgroundColor: "#d1fae5", borderWidth: 0 },
     text: { color: "#065f46" },
@@ -37,7 +40,11 @@ const variantStyles: Record<BadgeVariant, { container: ViewStyle; text: { color:
 };
 
 export function Badge({ variant = "default", children, style }: BadgeProps) {
-  const { container, text } = variantStyles[variant];
+  const { colors } = useTheme();
+  const { container, text } =
+    variant === "outline"
+      ? { container: { backgroundColor: "transparent", borderWidth: 1, borderColor: colors.borderInput }, text: { color: colors.text } }
+      : variantStyles[variant];
   return (
     <View
       style={[

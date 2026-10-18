@@ -1,6 +1,7 @@
 import React, { type ReactNode } from "react";
 import { View, Text } from "react-native";
 import { Card } from "./Card";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface EmptyStateProps {
   title: string;
@@ -10,6 +11,7 @@ interface EmptyStateProps {
 }
 
 export function EmptyState({ title, description, icon, action }: EmptyStateProps) {
+  const { colors } = useTheme();
   return (
     <View
       style={{
@@ -26,7 +28,7 @@ export function EmptyState({ title, description, icon, action }: EmptyStateProps
           style={{
             fontSize: 17,
             fontWeight: "600",
-            color: "#111827",
+            color: colors.text,
             textAlign: "center",
           }}
         >
@@ -36,7 +38,7 @@ export function EmptyState({ title, description, icon, action }: EmptyStateProps
           <Text
             style={{
               fontSize: 14,
-              color: "#6b7280",
+              color: colors.textMuted,
               textAlign: "center",
               marginTop: 6,
               lineHeight: 20,

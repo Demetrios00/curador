@@ -23,6 +23,8 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { AgendamentosStackParamList } from "@/navigation/StacksNavigator";
 import Toast from "react-native-toast-message";
+import { useTheme } from "@/contexts/ThemeContext";
+import type { ThemePalette } from "@/theme/colors";
 
 const statusVariant: Record<string, "warning" | "default" | "success" | "destructive"> = {
   agendado: "warning",
@@ -32,6 +34,7 @@ const statusVariant: Record<string, "warning" | "default" | "success" | "destruc
 };
 
 export default function Agendamentos() {
+  const { colors } = useTheme();
   const { user } = useAuth();
   const navigation = useNavigation<NativeStackNavigationProp<AgendamentosStackParamList>>();
   const [items, setItems] = useState<Appointment[]>([]);
@@ -180,7 +183,7 @@ export default function Agendamentos() {
   const displayed = activeTab === "proximos" ? proximos : historico;
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#f9fafb" }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <PageHeader
         title="Agendamentos"
         subtitle="Suas consultas, exames e cirurgias"
@@ -225,7 +228,7 @@ export default function Agendamentos() {
                   ? "Agende sua próxima consulta ou exame."
                   : "Seus atendimentos passados aparecerão aqui."
               }
-              icon={<Calendar size={40} color="#9ca3af" />}
+              icon={<Calendar size={40} color={colors.textSubtle} />}
             />
           ) : (
             <View style={{ gap: 12, paddingBottom: 32 }}>
@@ -233,6 +236,7 @@ export default function Agendamentos() {
                 <AppointmentCard
                   key={a.id}
                   a={a}
+                  colors={colors}
                   // Ideia 5: Confirmar/Cancelar só fazem sentido para
                   // compromissos futuros — no "Histórico" (já passados) essas
                   // ações não são exibidas.
@@ -252,12 +256,14 @@ export default function Agendamentos() {
 
 function AppointmentCard({
   a,
+  colors,
   showActions,
   updating,
   onConfirm,
   onCancel,
 }: {
   a: Appointment;
+  colors: ThemePalette;
   showActions: boolean;
   updating: boolean;
   onConfirm: () => void;
@@ -282,9 +288,9 @@ function AppointmentCard({
             <Stethoscope size={20} color="#1aaa86" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827" }}>{a.title}</Text>
+            <Text style={{ fontSize: 15, fontWeight: "600", color: colors.text }}>{a.title}</Text>
             {a.doctorName ? (
-              <Text style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>{a.doctorName}</Text>
+              <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>{a.doctorName}</Text>
             ) : null}
           </View>
         </View>
@@ -293,22 +299,22 @@ function AppointmentCard({
 
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-          <Calendar size={13} color="#9ca3af" />
-          <Text style={{ fontSize: 12, color: "#6b7280" }}>
+          <Calendar size={13} color={colors.textSubtle} />
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>
             {d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })} ·{" "}
             {d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </Text>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-          <MapPin size={13} color="#9ca3af" />
-          <Text style={{ fontSize: 12, color: "#6b7280" }}>{a.hospitalName}</Text>
+          <MapPin size={13} color={colors.textSubtle} />
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>{a.hospitalName}</Text>
         </View>
       </View>
 
       {(a as any).preparation ? (
-        <View style={{ borderRadius: 10, backgroundColor: "rgba(245,158,11,0.1)", padding: 12 }}>
-          <Text style={{ fontSize: 12, color: "#111827" }}>
-            <Text style={{ fontWeight: "600", color: "#f59e0b" }}>Preparo: </Text>
+        <View style={{ borderRadius: 10, backgroundColor: colors.surfaceAlt, padding: 12 }}>
+          <Text style={{ fontSize: 12, color: colors.text }}>
+            <Text style={{ fontWeight: "600", color: colors.warn }}>Preparo: </Text>
             {(a as any).preparation}
           </Text>
         </View>
@@ -322,7 +328,7 @@ function AppointmentCard({
               disabled={updating}
               style={{
                 flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
-                height: 38, borderRadius: 10, backgroundColor: updating ? "#9ca3af" : "#1aaa86",
+                height: 38, borderRadius: 10, backgroundColor: updating ? colors.textSubtle : colors.primary,
               }}
               accessibilityLabel="Confirmar agendamento"
             >
@@ -337,12 +343,12 @@ function AppointmentCard({
               style={{
                 flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6,
                 height: 38, borderRadius: 10, borderWidth: 1,
-                borderColor: updating ? "#d1d5db" : "#ef4444",
+                borderColor: updating ? colors.borderInput : colors.danger,
               }}
               accessibilityLabel="Cancelar agendamento"
             >
-              <X size={15} color={updating ? "#9ca3af" : "#ef4444"} />
-              <Text style={{ fontSize: 13, fontWeight: "600", color: updating ? "#9ca3af" : "#ef4444" }}>
+              <X size={15} color={updating ? colors.textSubtle : colors.danger} />
+              <Text style={{ fontSize: 13, fontWeight: "600", color: updating ? colors.textSubtle : colors.danger }}>
                 Cancelar
               </Text>
             </TouchableOpacity>

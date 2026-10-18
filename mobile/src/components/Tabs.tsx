@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, TouchableOpacity, type ViewStyle } from "react-native";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface Tab {
   key: string;
@@ -14,12 +15,13 @@ interface TabsProps {
 }
 
 export function Tabs({ tabs, activeKey, onChange, style }: TabsProps) {
+  const { colors } = useTheme();
   return (
     <View
       style={[
         {
           flexDirection: "row",
-          backgroundColor: "#f3f4f6",
+          backgroundColor: colors.surfaceAlt,
           borderRadius: 10,
           padding: 3,
         },
@@ -37,7 +39,7 @@ export function Tabs({ tabs, activeKey, onChange, style }: TabsProps) {
               paddingVertical: 8,
               alignItems: "center",
               borderRadius: 8,
-              backgroundColor: isActive ? "#ffffff" : "transparent",
+              backgroundColor: isActive ? colors.surface : "transparent",
               shadowColor: isActive ? "#000" : "transparent",
               shadowOffset: { width: 0, height: 1 },
               shadowOpacity: isActive ? 0.08 : 0,
@@ -49,7 +51,7 @@ export function Tabs({ tabs, activeKey, onChange, style }: TabsProps) {
               style={{
                 fontSize: 14,
                 fontWeight: isActive ? "600" : "400",
-                color: isActive ? "#1aaa86" : "#6b7280",
+                color: isActive ? colors.primary : colors.textMuted,
               }}
             >
               {tab.label}

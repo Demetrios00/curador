@@ -11,6 +11,7 @@ import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { EmptyState } from "@/components/EmptyState";
 import { ChevronRight, FileText, Scissors, Stethoscope } from "lucide-react-native";
 import { useNavigation } from "@react-navigation/native";
+import { useTheme } from "@/contexts/ThemeContext";
 
 const statusVariant: Record<string, "warning" | "default" | "success"> = {
   pendente: "warning",
@@ -18,7 +19,14 @@ const statusVariant: Record<string, "warning" | "default" | "success"> = {
   concluido: "success",
 };
 
+/**
+ * Ideia 2 — extensão de escopo (03/09/2026): esta tela estava "aceitável"
+ * no teste real graças aos componentes compartilhados (`Card`/`Badge`), mas
+ * o fundo da tela e textos soltos ainda eram cores fixas. Padronizada por
+ * completo nesta rodada, junto com Resultados e Prescrições.
+ */
 export default function Encaminhamentos() {
+  const { colors } = useTheme();
   const { user } = useAuth();
   // `useNavigation` genérico (mesmo padrão de `Home.tsx`/`goToTab`): esta
   // tela vive dentro de `ResultadosStack`, mas precisa navegar para a aba
@@ -69,7 +77,7 @@ export default function Encaminhamentos() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#f9fafb" }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <PageHeader
         title="Encaminhamentos"
         subtitle="Indicações para especialistas e procedimentos"
@@ -88,7 +96,7 @@ export default function Encaminhamentos() {
         ) : items.length === 0 ? (
           <EmptyState
             title="Nenhum encaminhamento"
-            icon={<FileText size={40} color="#9ca3af" />}
+            icon={<FileText size={40} color={colors.textSubtle} />}
           />
         ) : (
           items.map((r) => {
@@ -107,13 +115,13 @@ export default function Encaminhamentos() {
                         width: 48, height: 48, borderRadius: 12,
                         backgroundColor: "rgba(14,94,112,0.1)", alignItems: "center", justifyContent: "center",
                       }}>
-                        <Icon size={20} color="#0e5e70" />
+                        <Icon size={20} color={colors.secondary} />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827" }}>
+                        <Text style={{ fontSize: 15, fontWeight: "600", color: colors.text }}>
                           {r.specialty}
                         </Text>
-                        <Text style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                        <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>
                           {r.type === "cirurgia" ? "Cirurgia" : "Consulta"} · Encaminhado por {r.doctorName}
                         </Text>
                       </View>
@@ -121,19 +129,19 @@ export default function Encaminhamentos() {
                     <Badge variant={statusVariant[r.status] ?? "secondary"}>{r.status}</Badge>
                   </View>
                   {r.reason ? (
-                    <View style={{ borderRadius: 10, backgroundColor: "rgba(243,244,246,0.8)", padding: 12 }}>
-                      <Text style={{ fontSize: 12, color: "#374151" }}>
+                    <View style={{ borderRadius: 10, backgroundColor: colors.surfaceAlt, padding: 12 }}>
+                      <Text style={{ fontSize: 12, color: colors.text }}>
                         <Text style={{ fontWeight: "600" }}>Motivo: </Text>{r.reason}
                       </Text>
                     </View>
                   ) : null}
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                    <Text style={{ fontSize: 11, color: "#9ca3af" }}>
+                    <Text style={{ fontSize: 11, color: colors.textSubtle }}>
                       Emitido em {new Date(r.date).toLocaleDateString("pt-BR")}
                     </Text>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-                      <Text style={{ fontSize: 11, fontWeight: "600", color: "#1aaa86" }}>Agendar</Text>
-                      <ChevronRight size={14} color="#1aaa86" />
+                      <Text style={{ fontSize: 11, fontWeight: "600", color: colors.primary }}>Agendar</Text>
+                      <ChevronRight size={14} color={colors.primary} />
                     </View>
                   </View>
                 </Card>

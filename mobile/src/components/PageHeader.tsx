@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { ChevronLeft } from "lucide-react-native";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface PageHeaderProps {
   title: string;
@@ -21,6 +22,7 @@ export function PageHeader({
 }: PageHeaderProps) {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const { colors } = useTheme();
   const isHero = variant === "hero";
 
   return (
@@ -31,12 +33,15 @@ export function PageHeader({
           paddingBottom: 16,
           paddingHorizontal: 20,
         },
+        // Ideia 2: a variante `hero` mantém a cor de marca fixa de
+        // propósito (mesma decisão da Home) — só `default` acompanha o
+        // tema.
         isHero
           ? { backgroundColor: "#1aaa86" }
           : {
-              backgroundColor: "#ffffff",
+              backgroundColor: colors.surface,
               borderBottomWidth: 1,
-              borderBottomColor: "#e5e7eb",
+              borderBottomColor: colors.border,
             },
       ]}
     >
@@ -51,7 +56,7 @@ export function PageHeader({
             >
               <ChevronLeft
                 size={20}
-                color={isHero ? "#ffffff" : "#374151"}
+                color={isHero ? "#ffffff" : colors.text}
               />
             </TouchableOpacity>
           )}
@@ -60,7 +65,7 @@ export function PageHeader({
               style={{
                 fontSize: isHero ? 22 : 20,
                 fontWeight: "700",
-                color: isHero ? "#ffffff" : "#111827",
+                color: isHero ? "#ffffff" : colors.text,
               }}
             >
               {title}
@@ -70,7 +75,7 @@ export function PageHeader({
                 style={{
                   fontSize: 13,
                   marginTop: 2,
-                  color: isHero ? "rgba(255,255,255,0.8)" : "#6b7280",
+                  color: isHero ? "rgba(255,255,255,0.8)" : colors.textMuted,
                 }}
               >
                 {subtitle}

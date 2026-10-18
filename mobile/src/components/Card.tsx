@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, type ViewProps } from "react-native";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface CardProps extends ViewProps {
   children: React.ReactNode;
@@ -26,14 +27,15 @@ interface CardFooterProps extends ViewProps {
 }
 
 export function Card({ children, style, ...props }: CardProps) {
+  const { colors } = useTheme();
   return (
     <View
       style={[
         {
-          backgroundColor: "#ffffff",
+          backgroundColor: colors.surface,
           borderRadius: 12,
           borderWidth: 1,
-          borderColor: "#e5e7eb",
+          borderColor: colors.border,
           shadowColor: "#000",
           shadowOffset: { width: 0, height: 1 },
           shadowOpacity: 0.06,
@@ -58,16 +60,18 @@ export function CardHeader({ children, style, ...props }: CardHeaderProps) {
 }
 
 export function CardTitle({ children }: CardTitleProps) {
+  const { colors } = useTheme();
   return (
-    <Text style={{ fontSize: 18, fontWeight: "600", color: "#111827", lineHeight: 22 }}>
+    <Text style={{ fontSize: 18, fontWeight: "600", color: colors.text, lineHeight: 22 }}>
       {children}
     </Text>
   );
 }
 
 export function CardDescription({ children }: CardDescriptionProps) {
+  const { colors } = useTheme();
   return (
-    <Text style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>{children}</Text>
+    <Text style={{ fontSize: 13, color: colors.textMuted, marginTop: 2 }}>{children}</Text>
   );
 }
 

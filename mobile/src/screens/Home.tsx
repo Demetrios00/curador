@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { useFocusEffect } from "@react-navigation/native";
+import { CommonActions, useFocusEffect } from "@react-navigation/native";
 import {
   View,
   Text,
@@ -27,6 +27,7 @@ import {
   Pill,
   Plus,
   Send,
+  Sun,
   TrendingUp,
 } from "lucide-react-native";
 import { Card } from "@/components/Card";
@@ -34,6 +35,8 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { HomeStackParamList } from "@/navigation/StacksNavigator";
 import { fetchHealthScore, type HealthScoreResponse } from "@/services/healthScoreApi";
+import { useTheme } from "@/contexts/ThemeContext";
+import type { ThemePalette } from "@/theme/colors";
 
 interface Stats {
   proximas: number;
@@ -55,6 +58,7 @@ interface Stats {
 
 export default function Home() {
   const { patient, user } = useAuth();
+  const { mode, colors, toggleTheme } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<NativeStackNavigationProp<HomeStackParamList>>();
   const [next, setNext] = useState<Appointment[]>([]);
@@ -225,41 +229,79 @@ export default function Home() {
   const firstName = patient?.fullName?.split(" ")[0] ?? "Paciente";
   const featured = next[0];
 
-  // Tela raiz de cada stack aninhada alcançável por `goToTab` — usada para
-  // resetar a stack antes de empurrar o destino (ver comentário abaixo).
-  // "Agendar" não entra aqui: é a própria tela `NovoAgendamento`, sem stack
-  // própria (Tab.Screen direto em `TabNavigator.tsx`).
+  /**
+   * ANTES (correção pós-teste real de 16/08/2026, nunca confirmada em
+   * dispositivo): a tentativa anterior navegava primeiro para a tela raiz da
+   * stack de destino e só depois para a tela pedida, em duas chamadas de
+   * `navigate` no mesmo tick, apostando que a primeira "fecharia" o que
+   * estivesse em cima da raiz antes da segunda empilhar a tela pedida.
+   *
+   * Teste real (03/09/2026) reproduziu exatamente o bug original: tocar
+   * "Prescrições" e depois "Encaminhamentos" (Acesso Rápido da Home) fez
+   * "voltar" em Encaminhamentos cair em Prescrições, não na Home. Causa:
+   * para um navegador aninhado que não está em foco, as duas chamadas de
+   * `navigate` são resolvidas contra o MESMO estado-base (o estado anterior
+   * à primeira) — a segunda não "enxerga" o efeito da primeira antes de
+   * ambas serem processadas, então só a última prevalece e o que já estava
+   * empilhado (Prescrições) nunca é removido.
+   *
+   * DEPOIS: em vez de compor duas ações de `navigate`, despachamos uma
+   * ÚNICA ação `CommonActions.reset`, direcionada (`target`) à stack
+   * aninhada da aba de destino pela própria key dela — obtida via
+   * `getParent().getState()` a partir do Tab Navigator. Isso substitui de
+   * uma vez o conteúdo daquela stack por só a tela pedida, sem nenhuma tela
+   * "raiz" por baixo — o mesmo estado que aquela aba teria numa primeira
+   * visita. Com uma stack de 1 tela só, "voltar" não tem mais nada para
+   * desempilhar ali dentro e sobe para o Tab Navigator, que (sem
+   * `backBehavior` customizado em `TabNavigator.tsx` — o padrão do
+   * React Navigation é `"history"`) volta para a ÚLTIMA aba visitada: a
+   * Home, no fluxo do Acesso Rápido/Explorar Mais/Alertas Importantes.
+   *
+   * Quando a aba de destino ainda não foi visitada nesta sessão (sua stack
+   * aninhada ainda não existe), um `navigate` simples já nasce com só a
+   * tela pedida — não há nada para resetar.
+   *
+   * IMPACTO NO TCC: nenhum — comportamento de navegação interno ao app,
+   * não descrito na arquitetura do artigo.
+   *
+   * CORREÇÃO (03/09/2026, mesmo dia): a versão acima, quando chamada SEM
+   * `screen` (ex.: `goToTab("Resultados")`, do atalho "Resultados" do
+   * Acesso Rápido), só fazia um `navigate(tabName)` simples — sem resetar
+   * nada. Bug real encontrado no teste: depois de visitar "Prescrições"
+   * (que reseta a stack da aba "Resultados" para conter só ela), tocar no
+   * atalho "Resultados" passou a abrir "Prescrições" — porque essa é,
+   * agora, a ÚNICA tela daquela stack, e um `navigate(tabName)` sem
+   * `screen` só foca a aba, mostrando o que já estiver no topo dela.
+   * `TAB_ROOT_SCREEN` resolve a tela-raiz de cada aba com stack aninhada,
+   * para que "sem `screen`" também passe pelo mesmo reset de uma tela só —
+   * agora sempre a raiz certa, nunca uma tela deixada por uma visita
+   * anterior.
+   */
   const TAB_ROOT_SCREEN: Record<string, string> = {
     Resultados: "Resultados",
     Menu: "Perfil",
   };
 
-  /**
-   * Correção pós-teste real (bug pré-existente, não introduzido pela Ideia
-   * 2.0-#4): `navigate(tabName, { screen })` do React Navigation, quando o
-   * destino ainda não é a tela focada da stack aninhada, EMPILHA o destino em
-   * cima do que já estiver lá — não reseta a stack. Reportado assim: tocar
-   * "Prescrições" e depois "Encaminhamentos" (os dois no Acesso Rápido da
-   * Home) resultava em "voltar" de Encaminhamentos caindo em Prescrições, não
-   * na Home. O bug já existia antes (a seção "Explorar Mais" tem os mesmos 2
-   * atalhos há mais tempo) — só ficou mais fácil de reproduzir agora que os
-   * dois atalhos estão lado a lado no topo.
-   *
-   * Correção: navega primeiro para a tela raiz da stack de destino (um
-   * `navigate` para uma rota já existente na stack apenas FECHA o que estiver
-   * em cima dela, sem empilhar de novo) e só depois para a tela pedida — as
-   * duas chamadas acontecem no mesmo tick, então o usuário não vê a raiz
-   * "piscar" no meio da transição.
-   */
   const goToTab = (tabName: string, screen?: string) => {
-    if (screen) {
-      const root = TAB_ROOT_SCREEN[tabName];
-      if (root && root !== screen) {
-        (navigation as any).navigate(tabName, { screen: root });
-      }
-      (navigation as any).navigate(tabName, { screen });
-    } else {
+    const targetScreen = screen ?? TAB_ROOT_SCREEN[tabName];
+
+    if (!targetScreen) {
+      // Aba sem stack aninhada própria (ex.: "Agendar") — nada a resetar.
       (navigation as any).navigate(tabName);
+      return;
+    }
+
+    const tabNavigation = navigation.getParent() ?? navigation;
+    const tabState = (tabNavigation as any).getState?.();
+    const tabRoute = tabState?.routes?.find((r: { name: string }) => r.name === tabName);
+
+    if (tabRoute?.state?.key) {
+      (tabNavigation as any).dispatch({
+        ...CommonActions.reset({ index: 0, routes: [{ name: targetScreen }] }),
+        target: tabRoute.state.key,
+      });
+    } else {
+      (tabNavigation as any).navigate(tabName, { screen: targetScreen });
     }
   };
 
@@ -307,7 +349,7 @@ export default function Home() {
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: "#f9fafb" }}
+      style={{ flex: 1, backgroundColor: colors.background }}
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#1aaa86"]} tintColor="#1aaa86" />
@@ -334,8 +376,15 @@ export default function Home() {
             </View>
           </View>
           <View style={{ flexDirection: "row", gap: 4 }}>
-            <TouchableOpacity style={{ padding: 8 }} accessibilityLabel="Tema">
-              <Moon size={20} color="rgba(255,255,255,0.9)" />
+            {/* Ideia 2: ícone que já existia aqui era decorativo (sem
+                `onPress`) — passa a alternar o tema e a espelhar o modo
+                atual (lua no claro, sol no escuro). */}
+            <TouchableOpacity style={{ padding: 8 }} accessibilityLabel="Alternar tema" onPress={toggleTheme}>
+              {mode === "dark" ? (
+                <Sun size={20} color="rgba(255,255,255,0.9)" />
+              ) : (
+                <Moon size={20} color="rgba(255,255,255,0.9)" />
+              )}
             </TouchableOpacity>
             <TouchableOpacity style={{ padding: 8 }} accessibilityLabel="Notificações">
               <Bell size={20} color="rgba(255,255,255,0.9)" />
@@ -378,18 +427,18 @@ export default function Home() {
       {/* Featured card */}
       <View style={{ marginTop: -52, paddingHorizontal: 20 }}>
         {loading ? (
-          <View style={{ height: 140, borderRadius: 16, backgroundColor: "#e5e7eb" }} />
+          <View style={{ height: 140, borderRadius: 16, backgroundColor: colors.border }} />
         ) : featured ? (
-          <FeaturedAppointment a={featured} onPress={() => navigation.navigate("Agendamentos")} />
+          <FeaturedAppointment a={featured} onPress={() => navigation.navigate("Agendamentos")} colors={colors} />
         ) : (
-          <View style={{ backgroundColor: "#fff", borderRadius: 16 }}>
+          <View style={{ backgroundColor: colors.surface, borderRadius: 16 }}>
             <Card style={{ borderRadius: 16, borderStyle: "dashed", padding: 24, alignItems: "center" }}>
-              <Calendar size={32} color="#9ca3af" />
-              <Text style={{ marginTop: 8, fontSize: 14, color: "#6b7280", textAlign: "center" }}>
+              <Calendar size={32} color={colors.textSubtle} />
+              <Text style={{ marginTop: 8, fontSize: 14, color: colors.textMuted, textAlign: "center" }}>
                 Você não tem agendamentos.
               </Text>
               <TouchableOpacity onPress={() => goToTab("Agendar")} style={{ marginTop: 12 }}>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#1aaa86" }}>Agendar agora</Text>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: colors.primary }}>Agendar agora</Text>
               </TouchableOpacity>
             </Card>
           </View>
@@ -404,7 +453,7 @@ export default function Home() {
         <View style={{ marginTop: 24, paddingHorizontal: 20 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
             <AlertCircle size={16} color="#f59e0b" />
-            <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>Alertas Importantes</Text>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: colors.text }}>Alertas Importantes</Text>
           </View>
           <TouchableOpacity onPress={topAlert.onPress} activeOpacity={0.8}>
             <Card style={{
@@ -422,43 +471,52 @@ export default function Home() {
                 <topAlert.icon size={16} color="#f59e0b" />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }} numberOfLines={1}>
+                <Text style={{ fontSize: 14, fontWeight: "600", color: colors.text }} numberOfLines={1}>
                   {topAlert.title}
                 </Text>
-                <Text style={{ fontSize: 12, color: "#6b7280" }} numberOfLines={1}>
+                <Text style={{ fontSize: 12, color: colors.textMuted }} numberOfLines={1}>
                   {topAlert.subtitle}
                 </Text>
               </View>
-              <ChevronRight size={16} color="#9ca3af" />
+              <ChevronRight size={16} color={colors.textSubtle} />
             </Card>
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Métricas */}
+      {/* Métricas
+          Ideia 2 — decisão de design registrada em
+          `claude/ideia2-tema-dark-light-status.md` (seção 1.4):
+          ANTES, "Suas Métricas" tinha fundo sólido pastel (#d1fae5) e ícone
+          verde-esmeralda fixo (#059669) — nenhuma dessas cores fazia parte
+          da paleta de marca do app, e um fundo sólido não se adapta ao tema
+          escuro. DEPOIS, usa o mesmo padrão de tinta translúcida sobre
+          `colors.primary` que o card irmão "Saúde em Dia" já usava —
+          ícone/texto passam a vir da paleta. Sem impacto no TCC (mudança
+          puramente visual). */}
       <View style={{ marginTop: 24, paddingHorizontal: 20, flexDirection: "row", gap: 12 }}>
-        <Card style={{ flex: 1, borderRadius: 16, borderWidth: 0, backgroundColor: "#d1fae5", padding: 16 }}>
-          <Activity size={20} color="#059669" />
-          <Text style={{ marginTop: 12, fontSize: 14, fontWeight: "600", color: "#111827" }}>
+        <Card style={{ elevation: 0, flex: 1, borderRadius: 16, borderWidth: 0, backgroundColor: "rgba(26,170,134,0.08)", padding: 16 }}>
+          <Activity size={20} color={colors.primary} />
+          <Text style={{ marginTop: 12, fontSize: 14, fontWeight: "600", color: colors.text }}>
             Suas Métricas
           </Text>
-          <Text style={{ fontSize: 11, color: "#6b7280" }}>Últimos 30 dias</Text>
+          <Text style={{ fontSize: 11, color: colors.textMuted }}>Últimos 30 dias</Text>
           <View style={{ marginTop: 12, gap: 4 }}>
-            <MetricRow label="Consultas" value={stats.consultas} />
-            <MetricRow label="Exames" value={stats.exames} />
-            <MetricRow label="Prescrições" value={stats.prescricoes} />
+            <MetricRow label="Consultas" value={stats.consultas} colors={colors} />
+            <MetricRow label="Exames" value={stats.exames} colors={colors} />
+            <MetricRow label="Prescrições" value={stats.prescricoes} colors={colors} />
           </View>
         </Card>
         {healthScore?.eligible && healthScore.score !== null ? (
           <Card style={{ elevation: 0, flex: 1, borderRadius: 16, borderWidth: 0, backgroundColor: "rgba(26,170,134,0.05)", padding: 16 }}>
             <TrendingUp size={20} color="#1aaa86" />
-            <Text style={{ marginTop: 12, fontSize: 14, fontWeight: "600", color: "#111827" }}>
+            <Text style={{ marginTop: 12, fontSize: 14, fontWeight: "600", color: colors.text }}>
               Saúde em Dia
             </Text>
-            <Text style={{ fontSize: 11, color: "#6b7280" }}>Score de bem-estar</Text>
+            <Text style={{ fontSize: 11, color: colors.textMuted }}>Score de bem-estar</Text>
             <View style={{ marginTop: 12 }}>
               <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={{ fontSize: 12, color: "#6b7280" }}>Progresso</Text>
+                <Text style={{ fontSize: 12, color: colors.textMuted }}>Progresso</Text>
                 <Text style={{ fontSize: 12, fontWeight: "600", color: "#1aaa86" }}>{healthScore.score}%</Text>
               </View>
               <View style={{
@@ -472,7 +530,7 @@ export default function Home() {
             {healthScore.improvements.length > 0 && (
               <View style={{ marginTop: 12, gap: 6 }}>
                 {healthScore.improvements.map((imp, i) => (
-                  <Text key={i} style={{ fontSize: 11, color: "#6b7280" }} numberOfLines={2}>
+                  <Text key={i} style={{ fontSize: 11, color: colors.textMuted }} numberOfLines={2}>
                     • {imp.message}
                   </Text>
                 ))}
@@ -481,11 +539,11 @@ export default function Home() {
           </Card>
         ) : (
           <Card style={{ elevation: 0, flex: 1, borderRadius: 16, borderWidth: 0, backgroundColor: "rgba(26,170,134,0.05)", padding: 16, justifyContent: "center" }}>
-            <TrendingUp size={20} color="#9ca3af" />
-            <Text style={{ marginTop: 12, fontSize: 14, fontWeight: "600", color: "#111827" }}>
+            <TrendingUp size={20} color={colors.textSubtle} />
+            <Text style={{ marginTop: 12, fontSize: 14, fontWeight: "600", color: colors.text }}>
               Saúde em Dia
             </Text>
-            <Text style={{ marginTop: 4, fontSize: 11, color: "#6b7280" }}>
+            <Text style={{ marginTop: 4, fontSize: 11, color: colors.textMuted }}>
               Disponível após seu primeiro agendamento.
             </Text>
           </Card>
@@ -495,7 +553,7 @@ export default function Home() {
       {/* Próximos Agendamentos */}
       <View style={{ marginTop: 24, paddingHorizontal: 20 }}>
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }}>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: colors.text }}>
             Próximos Agendamentos
           </Text>
           <TouchableOpacity
@@ -510,31 +568,31 @@ export default function Home() {
         {loading ? (
           <View style={{ gap: 8 }}>
             {[0, 1].map((i) => (
-              <View key={i} style={{ height: 100, borderRadius: 16, backgroundColor: "#e5e7eb" }} />
+              <View key={i} style={{ height: 100, borderRadius: 16, backgroundColor: colors.border }} />
             ))}
           </View>
         ) : next.length === 0 ? (
           <Card style={{ borderRadius: 16, borderStyle: "dashed", padding: 24, alignItems: "center" }}>
-            <Text style={{ fontSize: 14, color: "#6b7280" }}>Nenhum agendamento futuro</Text>
+            <Text style={{ fontSize: 14, color: colors.textMuted }}>Nenhum agendamento futuro</Text>
           </Card>
         ) : (
           <View style={{ gap: 12 }}>
-            {next.map((a) => <SmallAppointmentCard key={a.id} a={a} />)}
+            {next.map((a) => <SmallAppointmentCard key={a.id} a={a} colors={colors} />)}
           </View>
         )}
       </View>
 
       {/* Explorar Mais */}
       <View style={{ marginTop: 24, paddingHorizontal: 20, marginBottom: 32 }}>
-        <Card style={{ elevation: 0, borderRadius: 16, backgroundColor: "rgba(239, 245, 245, 0.3)", padding: 16, shadowOpacity: 0, borderColor: "rgb(217, 232, 230)" }}>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", marginBottom: 12 }}>
+        <Card style={{ elevation: 0, borderRadius: 16, backgroundColor: "rgba(26,170,134,0.06)", padding: 16, shadowOpacity: 0, borderColor: "rgba(26,170,134,0.15)" }}>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: colors.text, marginBottom: 12 }}>
             Explorar Mais
           </Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            <ExploreItem label="Prescrições" icon={FileText} onPress={() => goToTab("Resultados", "Prescricoes")} />
-            <ExploreItem label="Encaminhamentos" icon={FileText} onPress={() => goToTab("Resultados", "Encaminhamentos")} />
-            <ExploreItem label="Unidades" icon={MapPin} onPress={() => goToTab("Menu", "UnidadesProximas")} />
-            <ExploreItem label="Perfil" icon={MessageSquare} onPress={() => goToTab("Menu", "Perfil")} />
+            <ExploreItem label="Prescrições" icon={FileText} onPress={() => goToTab("Resultados", "Prescricoes")} colors={colors} />
+            <ExploreItem label="Encaminhamentos" icon={FileText} onPress={() => goToTab("Resultados", "Encaminhamentos")} colors={colors} />
+            <ExploreItem label="Unidades" icon={MapPin} onPress={() => goToTab("Menu", "UnidadesProximas")} colors={colors} />
+            <ExploreItem label="Perfil" icon={MessageSquare} onPress={() => goToTab("Menu", "Perfil")} colors={colors} />
           </View>
         </Card>
       </View>
@@ -555,7 +613,7 @@ const STATUS_COLOR: Record<string, string> = {
   cancelado: "#ef4444",
 };
 
-function FeaturedAppointment({ a, onPress }: { a: Appointment; onPress: () => void }) {
+function FeaturedAppointment({ a, onPress, colors }: { a: Appointment; onPress: () => void; colors: ThemePalette }) {
   const date = new Date(a.date);
   const today = new Date();
   const tomorrow = new Date(today);
@@ -583,18 +641,18 @@ function FeaturedAppointment({ a, onPress }: { a: Appointment; onPress: () => vo
               {badgeLabel}
             </Text>
           </View>
-          <Text style={{ fontSize: 12, color: "#6b7280" }}>{dateLabel}</Text>
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>{dateLabel}</Text>
         </View>
-        <ChevronRight size={16} color="#9ca3af" />
+        <ChevronRight size={16} color={colors.textSubtle} />
       </View>
-      <Text style={{ marginTop: 8, fontSize: 16, fontWeight: "700", color: "#111827" }}>{a.title}</Text>
-      <Text style={{ marginTop: 4, fontSize: 14, color: "#6b7280" }}>
+      <Text style={{ marginTop: 8, fontSize: 16, fontWeight: "700", color: colors.text }}>{a.title}</Text>
+      <Text style={{ marginTop: 4, fontSize: 14, color: colors.textMuted }}>
         {(a as any).professionalName ?? "Profissional"} ·{" "}
         {date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
       </Text>
       <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 }}>
-        <MapPin size={12} color="#6b7280" />
-        <Text style={{ fontSize: 12, color: "#6b7280" }}>{a.hospitalName}</Text>
+        <MapPin size={12} color={colors.textMuted} />
+        <Text style={{ fontSize: 12, color: colors.textMuted }}>{a.hospitalName}</Text>
       </View>
       <TouchableOpacity
         onPress={onPress}
@@ -609,7 +667,7 @@ function FeaturedAppointment({ a, onPress }: { a: Appointment; onPress: () => vo
   );
 }
 
-function SmallAppointmentCard({ a }: { a: Appointment }) {
+function SmallAppointmentCard({ a, colors }: { a: Appointment; colors: ThemePalette }) {
   const date = new Date(a.date);
   const isExam = (a as any).type === "exame";
   const Icon = isExam ? FileText : Heart;
@@ -623,12 +681,12 @@ function SmallAppointmentCard({ a }: { a: Appointment }) {
           <Icon size={20} color="#1aaa86" />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827" }} numberOfLines={1}>
+          <Text style={{ fontSize: 14, fontWeight: "600", color: colors.text }} numberOfLines={1}>
             {a.title}
           </Text>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
-            <Calendar size={12} color="#9ca3af" />
-            <Text style={{ fontSize: 12, color: "#6b7280" }}>
+            <Calendar size={12} color={colors.textSubtle} />
+            <Text style={{ fontSize: 12, color: colors.textMuted }}>
               {date.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} ·{" "}
               {date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
             </Text>
@@ -666,19 +724,20 @@ function QuickIconHero({ icon: Icon, label, onPress }: {
   );
 }
 
-function MetricRow({ label, value }: { label: string; value: number }) {
+function MetricRow({ label, value, colors }: { label: string; value: number; colors: ThemePalette }) {
   return (
     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-      <Text style={{ fontSize: 12, color: "#6b7280" }}>{label}</Text>
-      <Text style={{ fontSize: 12, fontWeight: "600", color: "#111827" }}>{value}</Text>
+      <Text style={{ fontSize: 12, color: colors.textMuted }}>{label}</Text>
+      <Text style={{ fontSize: 12, fontWeight: "600", color: colors.text }}>{value}</Text>
     </View>
   );
 }
 
-function ExploreItem({ label, icon: Icon, onPress }: {
+function ExploreItem({ label, icon: Icon, onPress, colors }: {
   label: string;
   icon: React.ComponentType<{ size: number; color: string }>;
   onPress: () => void;
+  colors: ThemePalette;
 }) {
   return (
     <TouchableOpacity
@@ -686,12 +745,12 @@ function ExploreItem({ label, icon: Icon, onPress }: {
       style={{
         width: "47%",
         flexDirection: "row", alignItems: "center", gap: 8,
-        backgroundColor: "#fff", borderRadius: 10, borderWidth: 1,
-        borderColor: "#fff", padding: 10,
+        backgroundColor: colors.surface, borderRadius: 10, borderWidth: 1,
+        borderColor: colors.surface, padding: 10,
       }}
     >
       <Icon size={16} color="#1aaa86" />
-      <Text style={{ fontSize: 13, color: "#374151" }}>{label}</Text>
+      <Text style={{ fontSize: 13, color: colors.text }}>{label}</Text>
     </TouchableOpacity>
   );
 }

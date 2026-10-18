@@ -20,6 +20,8 @@ import { Loader2, ChevronDown, Info } from "lucide-react-native";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import Toast from "react-native-toast-message";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import { useTheme } from "@/contexts/ThemeContext";
+import type { ThemePalette } from "@/theme/colors";
 
 const APPOINTMENT_TYPES: { value: AppointmentType; label: string }[] = [
   { value: "consulta", label: "Consulta" },
@@ -39,8 +41,18 @@ interface PrefillNotice {
   message: string;
 }
 
+/**
+ * Ideia 2 — extensão de escopo (03/09/2026): esta tela ficava fora do escopo
+ * reduzido original (`claude/ideia2-tema-dark-light-proposta.md`) — só o
+ * campo "Observações" (via `Input`, já themeado) acompanhava o tema; o
+ * restante da tela (seletores de tipo/especialidade/unidade/médico, campos
+ * de data/hora, modal de seleção) era código próprio, com cores fixas.
+ * Retemado por completo nesta rodada, junto com Unidades Próximas e Agente
+ * IA.
+ */
 export default function NovoAgendamento() {
   const { user } = useAuth();
+  const { colors } = useTheme();
   const navigation = useNavigation();
   const route = useRoute();
   // Esta tela é montada tanto como a própria aba "Agendar" (sem stack) quanto
@@ -289,7 +301,7 @@ export default function NovoAgendamento() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#f9fafb" }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <PageHeader title="Novo agendamento" showBack />
       <ScrollView
         style={{ flex: 1 }}
@@ -307,8 +319,8 @@ export default function NovoAgendamento() {
               borderWidth: 1, borderColor: "rgba(26,170,134,0.25)",
             }}
           >
-            <Info size={16} color="#1aaa86" style={{ marginTop: 1 }} />
-            <Text style={{ flex: 1, fontSize: 12, color: "#0e5e70", lineHeight: 17 }}>
+            <Info size={16} color={colors.primary} style={{ marginTop: 1 }} />
+            <Text style={{ flex: 1, fontSize: 12, color: colors.text, lineHeight: 17 }}>
               {prefillNotice.message}
             </Text>
           </View>
@@ -321,6 +333,7 @@ export default function NovoAgendamento() {
           items={APPOINTMENT_TYPES.map((t) => ({ id: t.value, name: t.label }))}
           onSelect={(id) => { setType(id as AppointmentType); setSpecialtyId(""); setDoctorId(""); }}
           placeholder="Selecione o tipo"
+          colors={colors}
         />
 
         {/* Especialidade (consulta / online) */}
@@ -331,6 +344,7 @@ export default function NovoAgendamento() {
             items={specialties.map((s) => ({ id: s.id, name: s.name }))}
             onSelect={(id) => { setSpecialtyId(id); setDoctorId(""); }}
             placeholder="Selecione"
+            colors={colors}
           />
         )}
 
@@ -341,6 +355,7 @@ export default function NovoAgendamento() {
           items={hospitals.map((h) => ({ id: h.id, name: `${h.name} — ${h.city}/${h.state}` }))}
           onSelect={(id) => { setHospitalId(id); setDoctorId(""); }}
           placeholder="Selecione a unidade"
+          colors={colors}
         />
 
         {/* Médico (opcional) */}
@@ -351,6 +366,7 @@ export default function NovoAgendamento() {
             items={[{ id: "", name: "Qualquer médico disponível" }, ...filteredDoctors.map((d) => ({ id: d.id, name: d.name }))]}
             onSelect={setDoctorId}
             placeholder="Qualquer médico disponível"
+            colors={colors}
           />
         )}
 
@@ -362,6 +378,7 @@ export default function NovoAgendamento() {
             items={examTypes.map((x) => ({ id: x.id, name: x.name }))}
             onSelect={setExamTypeId}
             placeholder="Selecione o exame"
+            colors={colors}
           />
         )}
 
@@ -373,41 +390,42 @@ export default function NovoAgendamento() {
             items={surgeryTypes.map((x) => ({ id: x.id, name: x.name }))}
             onSelect={setSurgeryTypeId}
             placeholder="Selecione a cirurgia"
+            colors={colors}
           />
         )}
 
         {/* Data e Hora */}
         <View style={{ flexDirection: "row", gap: 12 }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: "500", color: "#374151", marginBottom: 4 }}>Data</Text>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: colors.textMuted, marginBottom: 4 }}>Data</Text>
             <TouchableOpacity
               onPress={() => setShowDatePicker(true)}
               style={{
-                height: 40, borderWidth: 1, borderColor: "#d1d5db",
+                height: 40, borderWidth: 1, borderColor: colors.borderInput,
                 borderRadius: 8, paddingHorizontal: 12, flexDirection: "row",
-                alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff",
+                alignItems: "center", justifyContent: "space-between", backgroundColor: colors.surface,
               }}
             >
-              <Text style={{ fontSize: 14, color: "#111827" }}>
+              <Text style={{ fontSize: 14, color: colors.text }}>
                 {selectedDate.toLocaleDateString("pt-BR")}
               </Text>
-              <ChevronDown size={16} color="#9ca3af" />
+              <ChevronDown size={16} color={colors.textSubtle} />
             </TouchableOpacity>
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 14, fontWeight: "500", color: "#374151", marginBottom: 4 }}>Hora</Text>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: colors.textMuted, marginBottom: 4 }}>Hora</Text>
             <TouchableOpacity
               onPress={() => setShowTimePicker(true)}
               style={{
-                height: 40, borderWidth: 1, borderColor: "#d1d5db",
+                height: 40, borderWidth: 1, borderColor: colors.borderInput,
                 borderRadius: 8, paddingHorizontal: 12, flexDirection: "row",
-                alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff",
+                alignItems: "center", justifyContent: "space-between", backgroundColor: colors.surface,
               }}
             >
-              <Text style={{ fontSize: 14, color: "#111827" }}>
+              <Text style={{ fontSize: 14, color: colors.text }}>
                 {selectedDate.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
               </Text>
-              <ChevronDown size={16} color="#9ca3af" />
+              <ChevronDown size={16} color={colors.textSubtle} />
             </TouchableOpacity>
           </View>
         </View>
@@ -474,48 +492,50 @@ function PickerField({
   items,
   onSelect,
   placeholder,
+  colors,
 }: {
   label: string;
   value: string;
   items: PickerItem[];
   onSelect: (id: string) => void;
   placeholder: string;
+  colors: ThemePalette;
 }) {
   const [open, setOpen] = useState(false);
 
   return (
     <View>
-      <Text style={{ fontSize: 14, fontWeight: "500", color: "#374151", marginBottom: 4 }}>{label}</Text>
+      <Text style={{ fontSize: 14, fontWeight: "500", color: colors.textMuted, marginBottom: 4 }}>{label}</Text>
       <TouchableOpacity
         onPress={() => setOpen(true)}
         style={{
-          height: 40, borderWidth: 1, borderColor: "#d1d5db",
+          height: 40, borderWidth: 1, borderColor: colors.borderInput,
           borderRadius: 8, paddingHorizontal: 12, flexDirection: "row",
-          alignItems: "center", justifyContent: "space-between", backgroundColor: "#fff",
+          alignItems: "center", justifyContent: "space-between", backgroundColor: colors.surface,
         }}
         accessibilityLabel={label}
       >
-        <Text style={{ fontSize: 14, color: value ? "#111827" : "#9ca3af", flex: 1 }} numberOfLines={1}>
+        <Text style={{ fontSize: 14, color: value ? colors.text : colors.textSubtle, flex: 1 }} numberOfLines={1}>
           {value || placeholder}
         </Text>
-        <ChevronDown size={16} color="#9ca3af" />
+        <ChevronDown size={16} color={colors.textSubtle} />
       </TouchableOpacity>
 
       <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
         <TouchableOpacity
-          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)" }}
+          style={{ flex: 1, backgroundColor: colors.overlay }}
           onPress={() => setOpen(false)}
           activeOpacity={1}
         >
           <View
             style={{
               position: "absolute", bottom: 0, left: 0, right: 0,
-              backgroundColor: "#fff", borderTopLeftRadius: 20, borderTopRightRadius: 20,
+              backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20,
               maxHeight: "60%",
             }}
           >
-            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: "#e5e7eb" }}>
-              <Text style={{ fontSize: 16, fontWeight: "600", color: "#111827" }}>{label}</Text>
+            <View style={{ padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ fontSize: 16, fontWeight: "600", color: colors.text }}>{label}</Text>
             </View>
             <FlatList
               data={items}
@@ -524,11 +544,11 @@ function PickerField({
                 <TouchableOpacity
                   onPress={() => { onSelect(item.id); setOpen(false); }}
                   style={{
-                    padding: 16, borderBottomWidth: 1, borderBottomColor: "#f3f4f6",
-                    backgroundColor: item.id === value ? "#f0fdf9" : "#fff",
+                    padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border,
+                    backgroundColor: item.id === value ? "rgba(26,170,134,0.08)" : colors.surface,
                   }}
                 >
-                  <Text style={{ fontSize: 14, color: "#111827" }}>{item.name}</Text>
+                  <Text style={{ fontSize: 14, color: colors.text }}>{item.name}</Text>
                 </TouchableOpacity>
               )}
               style={{ paddingBottom: 32 }}

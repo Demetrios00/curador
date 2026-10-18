@@ -1,10 +1,11 @@
-import { View, Text, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Image, Alert, ActivityIndicator, Switch } from "react-native";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTheme } from "@/contexts/ThemeContext";
 import { PageHeader } from "@/components/PageHeader";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
-import { Camera, Mail, Phone, ShieldCheck, User as UserIcon } from "lucide-react-native";
+import { Camera, Mail, Moon, Phone, ShieldCheck, User as UserIcon } from "lucide-react-native";
 import Toast from "react-native-toast-message";
 import * as ImagePicker from "expo-image-picker";
 import { doc, updateDoc } from "firebase/firestore";
@@ -12,6 +13,7 @@ import { db } from "@/config/firebase";
 
 export default function Perfil() {
   const { patient, user, signOut, refreshPatient } = useAuth();
+  const { mode, colors, setMode } = useTheme();
   const [uploading, setUploading] = useState(false);
 
   const handleLogout = async () => {
@@ -67,7 +69,7 @@ export default function Perfil() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#f9fafb" }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <PageHeader
         title="Meu perfil"
         variant="hero"
@@ -84,12 +86,12 @@ export default function Perfil() {
           <TouchableOpacity onPress={handleChangePhoto} disabled={uploading} activeOpacity={0.8}>
             <View style={{
               width: 96, height: 96, borderRadius: 48,
-              backgroundColor: "#e5e7eb", alignItems: "center", justifyContent: "center",
-              overflow: "hidden", borderWidth: 3, borderColor: "#fff",
+              backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center",
+              overflow: "hidden", borderWidth: 3, borderColor: colors.surface,
               shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 8, elevation: 4,
             }}>
               {uploading ? (
-                <ActivityIndicator color="#6b7280" />
+                <ActivityIndicator color={colors.textMuted} />
               ) : patient?.photoURL ? (
                 <Image
                   source={{ uri: patient.photoURL }}
@@ -97,14 +99,14 @@ export default function Perfil() {
                   resizeMode="cover"
                 />
               ) : (
-                <UserIcon size={40} color="#9ca3af" />
+                <UserIcon size={40} color={colors.textSubtle} />
               )}
             </View>
             <View style={{
               position: "absolute", bottom: 0, right: 0,
               width: 28, height: 28, borderRadius: 14,
               backgroundColor: "#2563eb", alignItems: "center", justifyContent: "center",
-              borderWidth: 2, borderColor: "#fff",
+              borderWidth: 2, borderColor: colors.surface,
             }}>
               <Camera size={13} color="#fff" />
             </View>
@@ -112,24 +114,24 @@ export default function Perfil() {
         </View>
 
         <Card style={{ borderRadius: 16, padding: 20, gap: 12 }}>
-          <Text style={{ fontSize: 13, fontWeight: "600", color: "#6b7280" }}>Dados pessoais</Text>
-          <Row icon={UserIcon} label="Nome" value={patient?.fullName ?? "-"} />
-          <Row icon={Mail} label="E-mail" value={patient?.email ?? user?.email ?? "-"} />
-          <Row icon={Phone} label="Telefone" value={patient?.phone ?? "-"} />
-          <Row icon={ShieldCheck} label="Convênio" value={patient?.insurance || "Particular"} />
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>Dados pessoais</Text>
+          <Row icon={UserIcon} label="Nome" value={patient?.fullName ?? "-"} colors={colors} />
+          <Row icon={Mail} label="E-mail" value={patient?.email ?? user?.email ?? "-"} colors={colors} />
+          <Row icon={Phone} label="Telefone" value={patient?.phone ?? "-"} colors={colors} />
+          <Row icon={ShieldCheck} label="Convênio" value={patient?.insurance || "Particular"} colors={colors} />
         </Card>
 
         <Card style={{ borderRadius: 16, padding: 20, gap: 12 }}>
-          <Text style={{ fontSize: 13, fontWeight: "600", color: "#6b7280" }}>Documentos</Text>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>Documentos</Text>
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={{ fontSize: 14, color: "#6b7280" }}>CPF</Text>
-            <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>
+            <Text style={{ fontSize: 14, color: colors.textMuted }}>CPF</Text>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: colors.text }}>
               {patient?.cpf ?? "-"}
             </Text>
           </View>
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={{ fontSize: 14, color: "#6b7280" }}>Nascimento</Text>
-            <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }}>
+            <Text style={{ fontSize: 14, color: colors.textMuted }}>Nascimento</Text>
+            <Text style={{ fontSize: 14, fontWeight: "500", color: colors.text }}>
               {patient?.birthDate
                 ? new Date(patient.birthDate).toLocaleDateString("pt-BR")
                 : "-"}
@@ -137,11 +139,36 @@ export default function Perfil() {
           </View>
         </Card>
 
+        {/* Ideia 2 (claude/ideia2-tema-dark-light-proposta.md): segundo
+            ponto de acesso ao alternador de tema, mais descoberto que o
+            ícone da Home para quem não percebeu o atalho lá. */}
+        <Card style={{ borderRadius: 16, padding: 20, gap: 12 }}>
+          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>Preferências</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={{
+                width: 36, height: 36, borderRadius: 8,
+                backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center",
+              }}>
+                <Moon size={16} color={colors.textMuted} />
+              </View>
+              <Text style={{ fontSize: 14, fontWeight: "500", color: colors.text }}>Tema escuro</Text>
+            </View>
+            <Switch
+              value={mode === "dark"}
+              onValueChange={(value) => setMode(value ? "dark" : "light")}
+              trackColor={{ false: colors.borderInput, true: colors.primary }}
+              thumbColor="#ffffff"
+              accessibilityLabel="Alternar tema escuro"
+            />
+          </View>
+        </Card>
+
         <Button variant="outline" onPress={handleLogout} style={{ height: 48 }}>
           Sair da conta
         </Button>
 
-        <Text style={{ textAlign: "center", fontSize: 12, color: "#9ca3af", paddingBottom: 16 }}>
+        <Text style={{ textAlign: "center", fontSize: 12, color: colors.textSubtle, paddingBottom: 16 }}>
           CuraDor v1.0 · Rede CuraD'Or
         </Text>
       </ScrollView>
@@ -153,22 +180,24 @@ function Row({
   icon: Icon,
   label,
   value,
+  colors,
 }: {
   icon: React.ComponentType<{ size: number; color: string }>;
   label: string;
   value: string;
+  colors: import("@/theme/colors").ThemePalette;
 }) {
   return (
     <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
       <View style={{
         width: 36, height: 36, borderRadius: 8,
-        backgroundColor: "#f3f4f6", alignItems: "center", justifyContent: "center",
+        backgroundColor: colors.surfaceAlt, alignItems: "center", justifyContent: "center",
       }}>
-        <Icon size={16} color="#6b7280" />
+        <Icon size={16} color={colors.textMuted} />
       </View>
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 12, color: "#6b7280" }}>{label}</Text>
-        <Text style={{ fontSize: 14, fontWeight: "500", color: "#111827" }} numberOfLines={1}>
+        <Text style={{ fontSize: 12, color: colors.textMuted }}>{label}</Text>
+        <Text style={{ fontSize: 14, fontWeight: "500", color: colors.text }} numberOfLines={1}>
           {value}
         </Text>
       </View>

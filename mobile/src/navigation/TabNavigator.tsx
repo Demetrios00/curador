@@ -10,6 +10,7 @@ import {
   NovoAgendamentoScreen,
 } from "./StacksNavigator";
 import { AppMenuModal } from "@/components/AppMenuModal";
+import { useTheme } from "@/contexts/ThemeContext";
 import type { ReferralPrefill, AppointmentPrefill } from "@/types";
 
 export type TabParamList = {
@@ -35,6 +36,7 @@ export function TabNavigator() {
   // lateral de "Menu", controlado aqui e não dentro do próprio painel, para
   // que o `listeners.tabPress` do Tab.Screen "Menu" (abaixo) possa abri-lo.
   const [menuOpen, setMenuOpen] = useState(false);
+  const { colors } = useTheme();
 
   return (
     <>
@@ -42,11 +44,11 @@ export function TabNavigator() {
         screenOptions={{
           headerShown: false,
           tabBarActiveTintColor: PRIMARY,
-          tabBarInactiveTintColor: "#6b7280",
+          tabBarInactiveTintColor: colors.textMuted,
           tabBarStyle: {
             borderTopWidth: 1,
-            borderTopColor: "#e5e7eb",
-            backgroundColor: "#ffffff",
+            borderTopColor: colors.border,
+            backgroundColor: colors.surface,
             height: 60,
             paddingBottom: 8,
           },

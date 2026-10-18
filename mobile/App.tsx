@@ -1,4 +1,4 @@
-import { NavigationContainer } from "@react-navigation/native";
+import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import Toast from "react-native-toast-message";
@@ -6,6 +6,7 @@ import { StatusBar } from "expo-status-bar";
 import { ScrollView, View, Text } from "react-native";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { RootNavigator } from "@/navigation/RootNavigator";
+import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 
 // Phase 4 component imports — remove after visual inspection
 import { Button } from "@/components/Button";
@@ -92,6 +93,57 @@ function ComponentPreview() {
 
 import React from "react";
 
+/**
+ * Ideia 2 (claude/ideia2-tema-dark-light-proposta.md): componente interno
+ * separado do `App` para poder chamar `useTheme()` — o hook só funciona
+ * DENTRO do `<ThemeProvider>`, então não pode ser usado no próprio `App()`,
+ * que é quem monta o provider.
+ *
+ * ANTES: `<StatusBar style="auto" />` só seguia o tema do sistema
+ * operacional, nunca a escolha manual feita dentro do app.
+ * DEPOIS: o estilo da status bar e o tema do `NavigationContainer` (cores de
+ * fundo/texto padrão do React Navigation, ex.: fundo de transições) passam a
+ * refletir o `mode` resolvido pelo `ThemeContext` (persistido ou do
+ * sistema).
+ */
+function AppContent() {
+  const { mode, colors } = useTheme();
+
+  const navigationTheme = mode === "dark"
+    ? {
+        ...DarkTheme,
+        colors: {
+          ...DarkTheme.colors,
+          primary: colors.primary,
+          background: colors.background,
+          card: colors.surface,
+          text: colors.text,
+          border: colors.border,
+        },
+      }
+    : {
+        ...DefaultTheme,
+        colors: {
+          ...DefaultTheme.colors,
+          primary: colors.primary,
+          background: colors.background,
+          card: colors.surface,
+          text: colors.text,
+          border: colors.border,
+        },
+      };
+
+  return (
+    <AuthProvider>
+      <NavigationContainer theme={navigationTheme}>
+        <StatusBar style={mode === "dark" ? "light" : "dark"} />
+        <RootNavigator />
+      </NavigationContainer>
+      <Toast />
+    </AuthProvider>
+  );
+}
+
 export default function App() {
   if (PREVIEW_COMPONENTS) {
     return (
@@ -104,13 +156,9 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
-        <AuthProvider>
-          <NavigationContainer>
-            <StatusBar style="auto" />
-            <RootNavigator />
-          </NavigationContainer>
-          <Toast />
-        </AuthProvider>
+        <ThemeProvider>
+          <AppContent />
+        </ThemeProvider>
       </SafeAreaProvider>
     </QueryClientProvider>
   );

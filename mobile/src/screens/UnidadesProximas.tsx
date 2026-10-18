@@ -11,12 +11,25 @@ import { EmptyState } from "@/components/EmptyState";
 import { Building2, MapPin, Phone } from "lucide-react-native";
 import { useGeolocation } from "@/hooks/useGeolocation";
 import { formatDistance, haversineDistanceKm } from "@/lib/geo";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface HospitalWithDistance extends Hospital {
   distanceKm: number;
 }
 
+/**
+ * Ideia 2 — extensão de escopo (03/09/2026): esta tela ficava fora do
+ * escopo reduzido original (`claude/ideia2-tema-dark-light-proposta.md`).
+ * No teste real, o resultado foi pior do que o previsto na proposta: o
+ * `Card` (componente compartilhado, já themeado) escurece corretamente,
+ * mas o nome de cada unidade usava `color: "#111827"` fixo — um texto
+ * escuro pensado para fundo claro — ficando praticamente ilegível sobre o
+ * fundo escuro do card. O fundo da própria tela (`View` raiz) também
+ * ficava sempre `#f9fafb` (claro), independente do tema. Retemado por
+ * completo nesta rodada, junto com Novo Agendamento e Agente IA.
+ */
 export default function UnidadesProximas() {
+  const { colors } = useTheme();
   const { coords, source, loading: geoLoading } = useGeolocation();
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,7 +70,7 @@ export default function UnidadesProximas() {
   }, [hospitals, coords]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#f9fafb" }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <PageHeader
         title="Unidades próximas"
         variant="hero"
@@ -82,7 +95,7 @@ export default function UnidadesProximas() {
           <EmptyState
             title="Nenhuma unidade encontrada"
             description="Nenhuma unidade com coordenadas cadastradas."
-            icon={<Building2 size={32} color="#9ca3af" />}
+            icon={<Building2 size={32} color={colors.textSubtle} />}
           />
         ) : (
           ranked.map((h) => (
@@ -91,11 +104,11 @@ export default function UnidadesProximas() {
                 width: 48, height: 48, borderRadius: 12, flexShrink: 0,
                 backgroundColor: "rgba(26,170,134,0.1)", alignItems: "center", justifyContent: "center",
               }}>
-                <Building2 size={24} color="#1aaa86" />
+                <Building2 size={24} color={colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "600", color: "#111827", flex: 1 }} numberOfLines={2}>
+                  <Text style={{ fontSize: 14, fontWeight: "600", color: colors.text, flex: 1 }} numberOfLines={2}>
                     {h.name}
                   </Text>
                   <Badge variant={h.distanceKm <= 5 ? "default" : "secondary"}>
@@ -103,15 +116,15 @@ export default function UnidadesProximas() {
                   </Badge>
                 </View>
                 <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 4, marginTop: 6 }}>
-                  <MapPin size={12} color="#9ca3af" style={{ marginTop: 1 }} />
-                  <Text style={{ fontSize: 12, color: "#6b7280", flex: 1 }} numberOfLines={2}>
+                  <MapPin size={12} color={colors.textSubtle} style={{ marginTop: 1 }} />
+                  <Text style={{ fontSize: 12, color: colors.textMuted, flex: 1 }} numberOfLines={2}>
                     {h.address} — {h.city}/{h.state}
                   </Text>
                 </View>
                 {h.phone ? (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 }}>
-                    <Phone size={11} color="#9ca3af" />
-                    <Text style={{ fontSize: 11, color: "#6b7280" }}>{h.phone}</Text>
+                    <Phone size={11} color={colors.textSubtle} />
+                    <Text style={{ fontSize: 11, color: colors.textMuted }}>{h.phone}</Text>
                   </View>
                 ) : null}
               </View>

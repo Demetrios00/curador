@@ -4,10 +4,11 @@ import {
   Text,
   TextInput,
   type TextInputProps,
-  type ViewStyle,
   type StyleProp,
+  type ViewStyle,
   Platform,
 } from "react-native";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface InputProps extends TextInputProps {
   label?: string;
@@ -16,6 +17,7 @@ interface InputProps extends TextInputProps {
 }
 
 export function Input({ label, error, containerStyle, style, ...props }: InputProps) {
+  const { colors } = useTheme();
   return (
     <View style={[{ marginBottom: 4 }, containerStyle]}>
       {label ? (
@@ -23,7 +25,7 @@ export function Input({ label, error, containerStyle, style, ...props }: InputPr
           style={{
             fontSize: 14,
             fontWeight: "500",
-            color: "#374151",
+            color: colors.text,
             marginBottom: 4,
           }}
         >
@@ -35,21 +37,21 @@ export function Input({ label, error, containerStyle, style, ...props }: InputPr
           {
             height: Platform.OS === "android" ? 48 : 40,
             borderWidth: 1,
-            borderColor: error ? "#ef4444" : "#d1d5db",
+            borderColor: error ? colors.danger : colors.borderInput,
             borderRadius: 8,
             paddingHorizontal: 12,
             paddingVertical: 8,
             fontSize: 14,
-            color: "#111827",
-            backgroundColor: "#ffffff",
+            color: colors.text,
+            backgroundColor: colors.surface,
           },
           style,
         ]}
-        placeholderTextColor="#9ca3af"
+        placeholderTextColor={colors.placeholder}
         {...props}
       />
       {error ? (
-        <Text style={{ fontSize: 12, color: "#ef4444", marginTop: 4 }}>{error}</Text>
+        <Text style={{ fontSize: 12, color: colors.danger, marginTop: 4 }}>{error}</Text>
       ) : null}
     </View>
   );

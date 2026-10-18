@@ -13,6 +13,7 @@ import {
   User,
   X,
 } from "lucide-react-native";
+import { useTheme } from "@/contexts/ThemeContext";
 
 const PANEL_WIDTH = 288;
 const PRIMARY = "#1aaa86";
@@ -68,6 +69,7 @@ interface AppMenuModalProps {
 export function AppMenuModal({ visible, onClose }: AppMenuModalProps) {
   const navigation = useNavigation<any>();
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const slideAnim = useRef(new Animated.Value(PANEL_WIDTH)).current;
   // Mantém o Modal montado durante a animação de fechamento, para o slide
   // para fora da tela ser visível em vez de sumir instantaneamente.
@@ -100,7 +102,7 @@ export function AppMenuModal({ visible, onClose }: AppMenuModalProps) {
     <Modal visible transparent animationType="none" onRequestClose={onClose}>
       <View style={{ flex: 1, flexDirection: "row" }}>
         <TouchableOpacity
-          style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)" }}
+          style={{ flex: 1, backgroundColor: colors.overlay }}
           activeOpacity={1}
           onPress={onClose}
           accessibilityLabel="Fechar menu"
@@ -108,7 +110,7 @@ export function AppMenuModal({ visible, onClose }: AppMenuModalProps) {
         <Animated.View
           style={{
             width: PANEL_WIDTH,
-            backgroundColor: "#ffffff",
+            backgroundColor: colors.surface,
             paddingTop: insets.top,
             paddingBottom: insets.bottom,
             transform: [{ translateX: slideAnim }],
@@ -127,12 +129,12 @@ export function AppMenuModal({ visible, onClose }: AppMenuModalProps) {
               paddingHorizontal: 20,
               paddingVertical: 16,
               borderBottomWidth: 1,
-              borderBottomColor: "#e5e7eb",
+              borderBottomColor: colors.border,
             }}
           >
-            <Text style={{ fontSize: 18, fontWeight: "700", color: "#111827" }}>Menu</Text>
+            <Text style={{ fontSize: 18, fontWeight: "700", color: colors.text }}>Menu</Text>
             <TouchableOpacity onPress={onClose} style={{ padding: 4 }} accessibilityLabel="Fechar">
-              <X size={22} color="#6b7280" />
+              <X size={22} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
 
@@ -161,7 +163,7 @@ export function AppMenuModal({ visible, onClose }: AppMenuModalProps) {
                   >
                     <Icon size={18} color={PRIMARY} />
                   </View>
-                  <Text style={{ fontSize: 15, color: "#111827", fontWeight: "500" }}>{item.label}</Text>
+                  <Text style={{ fontSize: 15, color: colors.text, fontWeight: "500" }}>{item.label}</Text>
                 </TouchableOpacity>
               );
             })}

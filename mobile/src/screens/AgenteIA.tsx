@@ -13,7 +13,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Bot, Send, User } from "lucide-react-native";
 import { useAuth } from "@/contexts/AuthContext";
 import { useGeolocation } from "@/hooks/useGeolocation";
-import { routeOrchestratorMessage } from "@/services/orchestratorApi";
+import {
+  routeOrchestratorMessage,
+  confirmAppointmentDraft,
+  type AppointmentDraft,
+} from "@/services/orchestratorApi";
+import { useTheme } from "@/contexts/ThemeContext";
 
 const PRIMARY = "#1aaa86";
 
@@ -28,6 +33,16 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   meta?: MessageMeta;
+  /**
+   * Ideia 5b: presente somente na mensagem do assistente que apresentou um
+   * rascunho de agendamento ainda não confirmado nem cancelado. Controla a
+   * exibição dos botões "Confirmar agendamento" / "Cancelar" logo abaixo do
+   * balão. Some (via `resolveDraftMessage`) assim que o paciente decide —
+   * os botões nunca ficam visíveis em mais de uma mensagem por vez, porque
+   * cada rascunho é resolvido antes de o próximo poder ser criado (o texto
+   * de confirmação/cancelamento vira uma nova mensagem, não reabre esta).
+   */
+  pendingDraft?: AppointmentDraft;
 }
 
 /**
@@ -58,9 +73,25 @@ const FALLBACK_UNKNOWN_MESSAGE =
  * evidência direta, na própria tela do app, de qual agente respondeu a
  * cada mensagem (útil para capturas de tela do TCC). Pode ser removido
  * sem nenhum impacto funcional caso não seja desejado na versão final.
+ *
+ * Ideia 5b (02/09/2026): quando `response.result?.requiresConfirmation` é
+ * `true`, a mensagem do assistente passa a carregar `pendingDraft` e exibe
+ * dois botões — "Confirmar agendamento" e "Cancelar". O app NUNCA edita o
+ * `draft` recebido: só o guarda na mensagem e, se confirmado, o reenvia
+ * exatamente como veio via `confirmAppointmentDraft`. Cancelar é 100% local
+ * (não chama o backend) — nenhum estado foi gravado até a confirmação, então
+ * não há nada para desfazer no servidor.
+ *
+ * Ideia 2 — extensão de escopo (03/09/2026): esta tela ficava totalmente
+ * fora do escopo reduzido original — nenhuma cor era themeada, nem o fundo
+ * nem os balões do chat. Retemada por completo nesta rodada, junto com
+ * Novo Agendamento e Unidades Próximas. O cabeçalho (verde, hero) permanece
+ * com cor de marca fixa nos dois temas — mesma convenção já usada em
+ * `PageHeader` (variant="hero").
  */
 export default function AgenteIA() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
   const { user } = useAuth();
   const { coords } = useGeolocation();
   const [messages, setMessages] = useState<Message[]>([
@@ -85,6 +116,18 @@ export default function AgenteIA() {
   // `loading === false`. Um `ref` muda de valor imediatamente, de forma
   // síncrona, então bloqueia a segunda chamada mesmo dentro do mesmo tick.
   const sendingRef = useRef(false);
+  // Ideia 5b: mesma proteção contra duplo toque, aplicada aos botões
+  // "Confirmar agendamento" / "Cancelar" (evita disparar `confirmAppointmentDraft`
+  // duas vezes com um toque duplo rápido, o que tentaria gravar o mesmo
+  // agendamento duas vezes).
+  const confirmingRef = useRef(false);
+
+  /** Remove `pendingDraft` da mensagem indicada, escondendo os botões — usado tanto ao confirmar quanto ao cancelar. */
+  function resolveDraftMessage(messageId: string) {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, pendingDraft: undefined } : m))
+    );
+  }
 
   async function handleSend(overrideText?: string) {
     const text = (overrideText ?? input).trim();
@@ -129,6 +172,10 @@ export default function AgenteIA() {
             confidence: response.confidence,
             agent: response.agent,
           },
+          pendingDraft:
+            response.result?.requiresConfirmation && response.result.draft
+              ? response.result.draft
+              : undefined,
         },
       ]);
     } catch (e: any) {
@@ -151,70 +198,193 @@ export default function AgenteIA() {
     }
   }
 
+  /**
+   * Ideia 5b: efetiva a criação do agendamento cujo rascunho foi mostrado
+   * na mensagem `messageId`. Reenvia `draft` sem qualquer alteração — quem
+   * resolve nomes/IDs e checa conflito de horário é sempre o backend
+   * (`agents/appointments/scheduleAppointment.ts` + ferramenta MCP
+   * `create_appointment`), nunca o app.
+   */
+  async function handleConfirmDraft(messageId: string, draft: AppointmentDraft) {
+    if (loading || confirmingRef.current) return;
+    confirmingRef.current = true;
+    resolveDraftMessage(messageId);
+    setLoading(true);
+
+    if (!user) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: "Sua sessão expirou. Faça login novamente para continuar.",
+        },
+      ]);
+      setLoading(false);
+      confirmingRef.current = false;
+      return;
+    }
+
+    try {
+      const idToken = await user.getIdToken();
+      const response = await confirmAppointmentDraft(idToken, draft);
+      const replyText = response.result?.message ?? FALLBACK_UNKNOWN_MESSAGE;
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: replyText,
+          meta: {
+            intent: response.intent,
+            confidence: response.confidence,
+            agent: response.agent,
+          },
+        },
+      ]);
+    } catch (e: any) {
+      const detail = e instanceof Error ? e.message : String(e);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: "assistant",
+          content: `Desculpe, não consegui confirmar o agendamento.\n\nDetalhe técnico: ${detail}`,
+        },
+      ]);
+    } finally {
+      setLoading(false);
+      confirmingRef.current = false;
+    }
+  }
+
+  /**
+   * Cancelar é puramente local: como nada foi gravado no backend antes da
+   * confirmação (Ideia 5b — sem estado de conversa no servidor), não há
+   * chamada de rede envolvida em desistir de um rascunho.
+   */
+  function handleCancelDraft(messageId: string) {
+    resolveDraftMessage(messageId);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        role: "assistant",
+        content: "Sem problemas, cancelei esse agendamento. Se quiser, é só pedir de novo.",
+      },
+    ]);
+  }
+
   function renderItem({ item }: { item: Message }) {
     const isUser = item.role === "user";
     return (
       <View
         style={{
-          flexDirection: "row",
-          alignItems: "flex-end",
-          justifyContent: isUser ? "flex-end" : "flex-start",
           marginHorizontal: 16,
           marginVertical: 6,
         }}
       >
-        {!isUser && (
-          <View
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: PRIMARY,
-              alignItems: "center",
-              justifyContent: "center",
-              marginRight: 8,
-            }}
-          >
-            <Bot size={18} color="#fff" />
-          </View>
-        )}
-
         <View
           style={{
-            maxWidth: "75%",
-            paddingHorizontal: 14,
-            paddingVertical: 10,
-            borderRadius: 18,
-            borderBottomLeftRadius: isUser ? 18 : 4,
-            borderBottomRightRadius: isUser ? 4 : 18,
-            backgroundColor: isUser ? PRIMARY : "#f3f4f6",
+            flexDirection: "row",
+            alignItems: "flex-end",
+            justifyContent: isUser ? "flex-end" : "flex-start",
           }}
         >
-          <Text style={{ color: isUser ? "#fff" : "#111827", fontSize: 15, lineHeight: 22 }}>
-            {item.content}
-          </Text>
+          {!isUser && (
+            <View
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: PRIMARY,
+                alignItems: "center",
+                justifyContent: "center",
+                marginRight: 8,
+              }}
+            >
+              <Bot size={18} color="#fff" />
+            </View>
+          )}
 
-          {!isUser && item.meta && (
-            <Text style={{ color: "#6b7280", fontSize: 11, marginTop: 4 }}>
-              {item.meta.agent ? `agente: ${item.meta.agent}` : "intenção: desconhecida"} · confiança{" "}
-              {(item.meta.confidence * 100).toFixed(0)}%
+          <View
+            style={{
+              maxWidth: "75%",
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderRadius: 18,
+              borderBottomLeftRadius: isUser ? 18 : 4,
+              borderBottomRightRadius: isUser ? 4 : 18,
+              backgroundColor: isUser ? PRIMARY : colors.surfaceAlt,
+            }}
+          >
+            <Text style={{ color: isUser ? "#fff" : colors.text, fontSize: 15, lineHeight: 22 }}>
+              {item.content}
             </Text>
+
+            {!isUser && item.meta && (
+              <Text style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
+                {item.meta.agent ? `agente: ${item.meta.agent}` : "intenção: desconhecida"} · confiança{" "}
+                {(item.meta.confidence * 100).toFixed(0)}%
+              </Text>
+            )}
+          </View>
+
+          {isUser && (
+            <View
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: colors.surfaceAlt,
+                alignItems: "center",
+                justifyContent: "center",
+                marginLeft: 8,
+              }}
+            >
+              <User size={18} color={colors.textMuted} />
+            </View>
           )}
         </View>
 
-        {isUser && (
+        {!isUser && item.pendingDraft && (
           <View
             style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              backgroundColor: "#e5e7eb",
-              alignItems: "center",
-              justifyContent: "center",
-              marginLeft: 8,
+              flexDirection: "row",
+              gap: 10,
+              marginTop: 8,
+              marginLeft: 40,
             }}
           >
-            <User size={18} color="#6b7280" />
+            <TouchableOpacity
+              onPress={() => handleConfirmDraft(item.id, item.pendingDraft!)}
+              disabled={loading}
+              style={{
+                paddingVertical: 8,
+                paddingHorizontal: 14,
+                borderRadius: 20,
+                backgroundColor: loading ? "#a7d9cb" : PRIMARY,
+              }}
+            >
+              <Text style={{ color: "#fff", fontSize: 13, fontWeight: "600" }}>
+                Confirmar agendamento
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleCancelDraft(item.id)}
+              disabled={loading}
+              style={{
+                paddingVertical: 8,
+                paddingHorizontal: 14,
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: colors.borderInput,
+                backgroundColor: colors.surface,
+              }}
+            >
+              <Text style={{ color: colors.text, fontSize: 13, fontWeight: "600" }}>Cancelar</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -222,8 +392,8 @@ export default function AgenteIA() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#fff" }}>
-      {/* Header */}
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* Header — cor de marca fixa nos dois temas (mesma convenção de PageHeader variant="hero") */}
       <View
         style={{
           paddingTop: insets.top + 12,
@@ -278,7 +448,7 @@ export default function AgenteIA() {
           }}
         >
           <ActivityIndicator size="small" color={PRIMARY} />
-          <Text style={{ marginLeft: 8, color: "#6b7280", fontSize: 13 }}>
+          <Text style={{ marginLeft: 8, color: colors.textMuted, fontSize: 13 }}>
             Digitando...
           </Text>
         </View>
@@ -297,8 +467,8 @@ export default function AgenteIA() {
             paddingTop: 10,
             paddingBottom: insets.bottom + 10,
             borderTopWidth: 1,
-            borderTopColor: "#e5e7eb",
-            backgroundColor: "#fff",
+            borderTopColor: colors.border,
+            backgroundColor: colors.surface,
             gap: 10,
           }}
         >
@@ -307,15 +477,15 @@ export default function AgenteIA() {
               flex: 1,
               minHeight: 44,
               maxHeight: 120,
-              backgroundColor: "#f3f4f6",
+              backgroundColor: colors.surfaceAlt,
               borderRadius: 22,
               paddingHorizontal: 16,
               paddingVertical: 10,
               fontSize: 15,
-              color: "#111827",
+              color: colors.text,
             }}
             placeholder="Escreva sua mensagem..."
-            placeholderTextColor="#9ca3af"
+            placeholderTextColor={colors.placeholder}
             value={input}
             onChangeText={setInput}
             multiline
@@ -342,7 +512,7 @@ export default function AgenteIA() {
               width: 44,
               height: 44,
               borderRadius: 22,
-              backgroundColor: input.trim() && !loading ? PRIMARY : "#d1d5db",
+              backgroundColor: input.trim() && !loading ? PRIMARY : colors.borderInput,
               alignItems: "center",
               justifyContent: "center",
             }}

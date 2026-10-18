@@ -1,5 +1,6 @@
 import React from "react";
 import { View, ActivityIndicator, Text } from "react-native";
+import { useTheme } from "@/contexts/ThemeContext";
 
 interface LoadingSpinnerProps {
   size?: "small" | "large";
@@ -10,10 +11,11 @@ interface LoadingSpinnerProps {
 
 export function LoadingSpinner({
   size = "large",
-  color = "#1aaa86",
+  color,
   label,
   fullScreen = false,
 }: LoadingSpinnerProps) {
+  const { colors } = useTheme();
   return (
     <View
       style={{
@@ -23,9 +25,9 @@ export function LoadingSpinner({
         paddingVertical: fullScreen ? 0 : 32,
       }}
     >
-      <ActivityIndicator size={size} color={color} />
+      <ActivityIndicator size={size} color={color ?? colors.primary} />
       {label ? (
-        <Text style={{ marginTop: 10, fontSize: 14, color: "#6b7280" }}>{label}</Text>
+        <Text style={{ marginTop: 10, fontSize: 14, color: colors.textMuted }}>{label}</Text>
       ) : null}
     </View>
   );

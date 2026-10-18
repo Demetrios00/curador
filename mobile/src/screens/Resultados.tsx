@@ -10,8 +10,16 @@ import { Badge } from "@/components/Badge";
 import { LoadingSpinner } from "@/components/LoadingSpinner";
 import { EmptyState } from "@/components/EmptyState";
 import { Download, FileText, FlaskConical } from "lucide-react-native";
+import { useTheme } from "@/contexts/ThemeContext";
 
+/**
+ * Ideia 2 — extensão de escopo (03/09/2026): esta tela estava "aceitável"
+ * no teste real graças aos componentes compartilhados (`Card`/`Badge`), mas
+ * o fundo da tela e textos soltos ainda eram cores fixas. Padronizada por
+ * completo nesta rodada, junto com Prescrições e Encaminhamentos.
+ */
 export default function Resultados() {
+  const { colors } = useTheme();
   const { user } = useAuth();
   const [items, setItems] = useState<MedicalResult[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +53,7 @@ export default function Resultados() {
   }, [fetchData]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#f9fafb" }}>
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <PageHeader title="Resultados" subtitle="Exames e laudos médicos" />
       <ScrollView
         style={{ flex: 1 }}
@@ -61,7 +69,7 @@ export default function Resultados() {
           <EmptyState
             title="Nenhum resultado"
             description="Seus exames aparecerão aqui assim que ficarem prontos."
-            icon={<FileText size={40} color="#9ca3af" />}
+            icon={<FileText size={40} color={colors.textSubtle} />}
           />
         ) : (
           items.map((r) => (
@@ -70,18 +78,18 @@ export default function Resultados() {
                 width: 48, height: 48, borderRadius: 12,
                 backgroundColor: "rgba(14,94,112,0.1)", alignItems: "center", justifyContent: "center",
               }}>
-                <FlaskConical size={20} color="#0e5e70" />
+                <FlaskConical size={20} color={colors.secondary} />
               </View>
               <View style={{ flex: 1 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <Text style={{ fontSize: 15, fontWeight: "600", color: "#111827", flex: 1 }} numberOfLines={1}>
+                  <Text style={{ fontSize: 15, fontWeight: "600", color: colors.text, flex: 1 }} numberOfLines={1}>
                     {r.title}
                   </Text>
                   {r.status === "processando" && (
                     <Badge variant="warning">processando</Badge>
                   )}
                 </View>
-                <Text style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }} numberOfLines={1}>
+                <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }} numberOfLines={1}>
                   {new Date(r.date).toLocaleDateString("pt-BR")} · {r.hospitalName}
                 </Text>
               </View>
@@ -91,7 +99,7 @@ export default function Resultados() {
                   style={{ padding: 8, borderRadius: 20 }}
                   accessibilityLabel="Baixar laudo"
                 >
-                  <Download size={20} color="#1aaa86" />
+                  <Download size={20} color={colors.primary} />
                 </TouchableOpacity>
               ) : null}
             </Card>
