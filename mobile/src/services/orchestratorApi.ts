@@ -67,6 +67,12 @@ export interface AppointmentDraft {
  * confirmação é gravada (ou colide com outro horário), traz `created`/
  * `conflict`/`appointment`.
  */
+/** Pedido de agendamento incompleto: o app só guarda e devolve, nunca edita. */
+export interface PendingContext {
+  kind: "schedule";
+  text: string;
+}
+
 export interface OrchestratorResponse {
   requestId: string;
   intent: Intent;
@@ -79,6 +85,8 @@ export interface OrchestratorResponse {
         draft?: AppointmentDraft;
         created?: boolean;
         conflict?: boolean;
+        /** Continuidade (18/10): pedido de agendamento incompleto, a devolver na próxima mensagem. */
+        pendingContext?: PendingContext;
       } & Record<string, unknown>)
     | null;
 }
@@ -135,9 +143,14 @@ async function postToOrchestrator(idToken: string, body: Record<string, unknown>
 export async function routeOrchestratorMessage(
   idToken: string,
   message: string,
-  location?: Location
+  location?: Location,
+  pendingContext?: PendingContext | null
 ): Promise<OrchestratorResponse> {
-  return postToOrchestrator(idToken, { message, ...(location ? { location } : {}) });
+  return postToOrchestrator(idToken, {
+    message,
+    ...(location ? { location } : {}),
+    ...(pendingContext ? { pendingContext } : {}),
+  });
 }
 
 /**

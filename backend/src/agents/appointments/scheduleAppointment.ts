@@ -72,9 +72,49 @@ const appointmentDraftSchema = z.object({
   notes: z.string().nullable(),
 });
 
+/** Contexto de um pedido de agendamento ainda incompleto, devolvido pelo app na mensagem seguinte. */
+export interface SchedulingPendingContext {
+  kind: "schedule";
+  text: string;
+}
+
+const MAX_PENDING_TEXT = 1000;
+
+/** Valida o `pendingContext` recebido do cliente (nunca confiar cegamente no corpo da requisição). */
+export function parsePendingContext(raw: unknown): SchedulingPendingContext | null {
+  if (!raw || typeof raw !== "object") return null;
+  const { kind, text } = raw as { kind?: unknown; text?: unknown };
+  if (kind !== "schedule" || typeof text !== "string") return null;
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > MAX_PENDING_TEXT) return null;
+  return { kind: "schedule", text: trimmed };
+}
+
+/**
+ * Com um pedido pendente, a nova mensagem é tratada como CONTINUAÇÃO (ex.:
+ * "Ortopedia, dia 19 às 14h"), a menos que seja claramente uma pergunta
+ * sobre outra coisa ("quais meus agendamentos?", "meu exame ficou pronto?")
+ * — nesse caso o fluxo normal de classificação assume e o pendente é descartado.
+ */
+export function isSchedulingContinuation(message: string): boolean {
+  const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/\?\s*$/.test(normalized) && /\b(quais|qual|quando|onde|tenho|meus|minhas|resultado|pronto|unidade|perto|jejum|preparo)\b/.test(normalized)) {
+    return false;
+  }
+  if (/\b(cancela(r)?|desisto|deixa pra la|esquece)\b/.test(normalized)) return false;
+  return true;
+}
+
 export interface ScheduleAgentResult {
   message: string;
   needsInfo?: true;
+  /**
+   * Continuidade de conversa (18/10/2026): quando faltam dados, o texto
+   * acumulado do pedido volta para o app, que o devolve junto com a
+   * próxima mensagem. Mesmo princípio do rascunho (`draft`): nenhum estado
+   * de conversa fica guardado no servidor.
+   */
+  pendingContext?: SchedulingPendingContext;
   requiresConfirmation?: true;
   draft?: AppointmentDraft;
   created?: boolean;
@@ -272,8 +312,9 @@ export async function buildAppointmentDraft(_patientUid: string, message: string
     return {
       message:
         `Para agendar, ainda preciso que você me informe ${formatMissingList(missing)}. ` +
-        `Pode reformular incluindo isso em uma única mensagem?`,
+        `Pode me enviar só o que falta.`,
       needsInfo: true,
+      pendingContext: { kind: "schedule", text: message.slice(-MAX_PENDING_TEXT) },
     };
   }
 

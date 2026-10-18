@@ -19,6 +19,7 @@ import {
   routeOrchestratorMessage,
   confirmAppointmentDraft,
   type AppointmentDraft,
+  type PendingContext,
 } from "@/services/orchestratorApi";
 import { useTheme } from "@/contexts/ThemeContext";
 
@@ -106,6 +107,9 @@ export default function AgenteIA() {
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  // Continuidade (18/10): pedido de agendamento incompleto devolvido pelo
+  // backend. Fica só em memória nesta tela e volta na próxima mensagem.
+  const [pendingContext, setPendingContext] = useState<PendingContext | null>(null);
   const flatListRef = useRef<FlatList>(null);
   // Correção 18/10 (teste em dispositivo físico): com edge-to-edge ativo no
   // Android (app.json), o `KeyboardAvoidingView` com behavior "height" não
@@ -189,8 +193,9 @@ export default function AgenteIA() {
 
     try {
       const idToken = await user.getIdToken();
-      const response = await routeOrchestratorMessage(idToken, text, coords);
+      const response = await routeOrchestratorMessage(idToken, text, coords, pendingContext);
       const replyText = response.result?.message ?? FALLBACK_UNKNOWN_MESSAGE;
+      setPendingContext(response.result?.pendingContext ?? null);
 
       setMessages((prev) => [
         ...prev,

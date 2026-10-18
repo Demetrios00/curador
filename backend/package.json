@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "node -r ts-node/register/transpile-only --test tests/classifyAppointmentAction.test.ts",
+    "test": "node -r ts-node/register/transpile-only --test tests/classifyAppointmentAction.test.ts tests/schedulingContinuation.test.ts",
     "seed:instructions": "ts-node --transpile-only scripts/seedInstructions.ts",
     "seed:test-appointments": "ts-node --transpile-only scripts/seedTestAppointments.ts",
     "seed:test-results": "ts-node --transpile-only scripts/seedTestResults.ts",

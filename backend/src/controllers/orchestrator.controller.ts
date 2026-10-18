@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import type { NextFunction, Response } from "express";
 
 import { routeAppointmentsMessage } from "../agents/appointments/appointmentsRouter";
-import { confirmAppointmentDraft } from "../agents/appointments/scheduleAppointment";
+import { confirmAppointmentDraft, buildAppointmentDraft, parsePendingContext, isSchedulingContinuation } from "../agents/appointments/scheduleAppointment";
 import { handleInstructionsRequest } from "../agents/instructions/instructionsAgent";
 import { classifyIntent } from "../agents/orchestrator/classifyIntent";
 import { handleResultsRequest } from "../agents/results/resultsAgent";
@@ -38,6 +38,8 @@ interface RouteRequestBody {
    * presente, `message` é ignorado.
    */
   confirmDraft?: unknown;
+  /** Continuidade (18/10): pedido de agendamento incompleto devolvido pelo app. */
+  pendingContext?: unknown;
 }
 
 /**
@@ -173,8 +175,25 @@ export async function postRoute(req: AuthenticatedRequest, res: Response, next: 
 
     const location = parseLocation(body);
 
-    const classification = await classifyIntent(message);
-    const { selectedAgent, agentResult, toolUsed } = await dispatchToAgent(classification.intent, patientUid, message, location);
+    // Continuidade de conversa (18/10/2026): se o app devolveu um pedido de
+    // agendamento incompleto e a nova mensagem parece completá-lo, a
+    // classificação de intenção é dispensada (o domínio já é conhecido) e o
+    // texto acumulado vai direto para a extração de campos do Agente de
+    // Agendamentos. O servidor continua sem estado de conversa.
+    const pending = parsePendingContext(body.pendingContext);
+    let classification: { intent: Intent; confidence: number };
+    let selectedAgent: string | null;
+    let agentResult: unknown;
+    let toolUsed: string | null;
+    if (pending && isSchedulingContinuation(message)) {
+      classification = { intent: "APPOINTMENTS", confidence: 1 };
+      selectedAgent = "appointments";
+      agentResult = await buildAppointmentDraft(patientUid, `${pending.text}\n${message}`);
+      toolUsed = "mcp:get_scheduling_catalog";
+    } else {
+      classification = await classifyIntent(message);
+      ({ selectedAgent, agentResult, toolUsed } = await dispatchToAgent(classification.intent, patientUid, message, location));
+    }
     const finishedAt = Date.now();
     const latencyMs = finishedAt - startedAt;
 
