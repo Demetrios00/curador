@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Keyboard,
 } from "react-native";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Bot, Send, User } from "lucide-react-native";
 import { useAuth } from "@/contexts/AuthContext";
@@ -105,6 +107,27 @@ export default function AgenteIA() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+  // Correção 18/10 (teste em dispositivo físico): com edge-to-edge ativo no
+  // Android (app.json), o `KeyboardAvoidingView` com behavior "height" não
+  // reage ao teclado e a caixa de texto ficava escondida atrás dele. No
+  // Android, a altura do teclado é lida diretamente dos eventos do sistema e
+  // aplicada como espaço inferior (descontando a barra de abas, que fica
+  // por baixo do teclado).
+  const tabBarHeight = useBottomTabBarHeight();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const show = Keyboard.addListener("keyboardDidShow", (e) => {
+      setKeyboardHeight(e.endCoordinates.height);
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+    });
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  const androidKeyboardPadding = Math.max(0, keyboardHeight - tabBarHeight);
   // Ideia 2.0-#1 (claude/avaliacao-ajustes-2.0.md) — correção pós-teste real:
   // com `submitBehavior="submit"`, o teclado Android de alguns dispositivos
   // dispara `onSubmitEditing` DUAS vezes para um único Enter (falha conhecida
@@ -456,8 +479,9 @@ export default function AgenteIA() {
 
       {/* Input bar */}
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? tabBarHeight : 0}
+        style={Platform.OS === "android" ? { paddingBottom: androidKeyboardPadding } : undefined}
       >
         <View
           style={{
@@ -465,7 +489,8 @@ export default function AgenteIA() {
             alignItems: "flex-end",
             paddingHorizontal: 16,
             paddingTop: 10,
-            paddingBottom: insets.bottom + 10,
+            // A barra de abas já reserva o inset inferior do aparelho.
+            paddingBottom: 10,
             borderTopWidth: 1,
             borderTopColor: colors.border,
             backgroundColor: colors.surface,
