@@ -114,20 +114,28 @@ export default function AgenteIA() {
   // aplicada como espaço inferior (descontando a barra de abas, que fica
   // por baixo do teclado).
   const tabBarHeight = useBottomTabBarHeight();
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  // 2ª correção 18/10: subtrair a altura da barra de abas não bastava (o
+  // valor reportado pelo teclado varia entre aparelhos/teclados e não
+  // considera a barra de navegação do sistema). Agora o espaço é calculado
+  // por geometria de tela: distância entre o rodapé real desta tela
+  // (measureInWindow) e o topo real do teclado (screenY do evento).
+  const rootRef = useRef<View>(null);
+  const [androidKeyboardPadding, setAndroidKeyboardPadding] = useState(0);
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const show = Keyboard.addListener("keyboardDidShow", (e) => {
-      setKeyboardHeight(e.endCoordinates.height);
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+      const keyboardTop = e.endCoordinates.screenY;
+      rootRef.current?.measureInWindow((_x, y, _w, h) => {
+        setAndroidKeyboardPadding(Math.max(0, y + h - keyboardTop));
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+      });
     });
-    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardHeight(0));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setAndroidKeyboardPadding(0));
     return () => {
       show.remove();
       hide.remove();
     };
   }, []);
-  const androidKeyboardPadding = Math.max(0, keyboardHeight - tabBarHeight);
   // Ideia 2.0-#1 (claude/avaliacao-ajustes-2.0.md) — correção pós-teste real:
   // com `submitBehavior="submit"`, o teclado Android de alguns dispositivos
   // dispara `onSubmitEditing` DUAS vezes para um único Enter (falha conhecida
@@ -415,7 +423,7 @@ export default function AgenteIA() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View ref={rootRef} collapsable={false} style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Header — cor de marca fixa nos dois temas (mesma convenção de PageHeader variant="hero") */}
       <View
         style={{
