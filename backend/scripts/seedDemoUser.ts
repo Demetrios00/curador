@@ -8,7 +8,7 @@ import { getAdminAuth, getAdminFirestore } from "../src/firebase/admin";
  * - Marca como "concluido" (presença confirmada) os agendamentos já
  *   passados cujo título contenha algum dos termos de --concluir
  *   (padrão: "Gastroenterologia" e "Colonoscopia").
- * - Cria/atualiza resultados, prescrições e encaminhamentos com IDs
+ * - Cria/atualiza 3 resultados, 3 prescrições e 3 encaminhamentos com IDs
  *   determinísticos (`demo-<uid>-...`): rodar de novo NÃO duplica dados.
  *
  * Uso:
@@ -64,7 +64,6 @@ async function main() {
     { key: "res-colonoscopia", type: "exame", title: "Colonoscopia", doctorName: "Dr. Rafael Nunes", hospitalName: defaultHospital, date: daysFromNow(0, 12), status: "disponivel" },
     { key: "res-gastro", type: "consulta", title: "Relatório de consulta — Gastroenterologia", doctorName: "Dra. Camila Rocha", hospitalName: defaultHospital, date: daysFromNow(0, 12), status: "disponivel" },
     { key: "res-hemograma", type: "exame", title: "Hemograma completo", doctorName: "Dra. Camila Rocha", hospitalName: defaultHospital, date: daysFromNow(-2), status: "processando" },
-    { key: "res-glicemia", type: "exame", title: "Glicemia em jejum", doctorName: "Dr. Rafael Nunes", hospitalName: defaultHospital, date: daysFromNow(-20), status: "disponivel" },
   ];
   for (const { key, ...r } of results) {
     await db.collection("results").doc(id(key)).set({ patientUid: uid, ...r, seedTag: "demo-18-10" });
@@ -93,6 +92,17 @@ async function main() {
       controlled: false,
       medications: [{ name: "Vitamina D 2.000 UI", dosage: "1 cápsula", frequency: "1x ao dia", duration: "60 dias" }],
     },
+    {
+      key: "presc-orto",
+      doctorName: "Dr. Marcos Lima",
+      specialty: "Ortopedia",
+      date: daysFromNow(-25),
+      controlled: false,
+      medications: [
+        { name: "Paracetamol 750 mg", dosage: "1 comprimido", frequency: "A cada 8 horas, se dor", duration: "5 dias" },
+      ],
+      notes: "Prescrição de demonstração para testes do protótipo.",
+    },
   ];
   for (const { key, ...p } of prescriptions) {
     await db.collection("prescriptions").doc(id(key)).set({ patientUid: uid, ...p, seedTag: "demo-18-10" });
@@ -109,6 +119,17 @@ async function main() {
     await db.collection("referrals").doc(id(key)).set({ patientUid: uid, ...r, seedTag: "demo-18-10" });
   }
   console.log(`[seed:demo-user] ${referrals.length} encaminhamentos criados/atualizados`);
+  // 5) Remove dados de demo de execuções anteriores que saíram da lista (ex.: 4º resultado)
+  const keep = new Set([...results, ...prescriptions, ...referrals].map((x) => id(x.key)));
+  for (const col of ["results", "prescriptions", "referrals"]) {
+    const old = await db.collection(col).where("patientUid", "==", uid).where("seedTag", "==", "demo-18-10").get();
+    for (const doc of old.docs) {
+      if (!keep.has(doc.id)) {
+        await doc.ref.delete();
+        console.log(`[seed:demo-user] removido demo antigo: ${col}/${doc.id}`);
+      }
+    }
+  }
   console.log("[seed:demo-user] concluído.");
   process.exit(0);
 }
