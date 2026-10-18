@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import type { NextFunction, Response } from "express";
 
 import { routeAppointmentsMessage } from "../agents/appointments/appointmentsRouter";
-import { confirmAppointmentDraft, buildAppointmentDraft, parsePendingContext, isSchedulingContinuation } from "../agents/appointments/scheduleAppointment";
+import { confirmAppointmentDraft, buildAppointmentDraft, parsePendingContext, isSchedulingContinuation, classifyAppointmentAction } from "../agents/appointments/scheduleAppointment";
 import { handleInstructionsRequest } from "../agents/instructions/instructionsAgent";
 import { classifyIntent } from "../agents/orchestrator/classifyIntent";
 import { handleResultsRequest } from "../agents/results/resultsAgent";
@@ -189,6 +189,16 @@ export async function postRoute(req: AuthenticatedRequest, res: Response, next: 
       classification = { intent: "APPOINTMENTS", confidence: 1 };
       selectedAgent = "appointments";
       agentResult = await buildAppointmentDraft(patientUid, `${pending.text}\n${message}`);
+      toolUsed = "mcp:get_scheduling_catalog";
+    } else if ((await classifyAppointmentAction(message)) === "CREATE") {
+      // Roteamento híbrido (18/10/2026): pedidos explícitos de agendamento
+      // ("agende...", "quero marcar...") são reconhecidos por regra de alta
+      // precisão antes do LLM — a criação passa a exigir uma única chamada ao
+      // LLM (extração de campos) em vez de duas. Todas as demais mensagens
+      // continuam sendo classificadas pelo LLM.
+      classification = { intent: "APPOINTMENTS", confidence: 1 };
+      selectedAgent = "appointments";
+      agentResult = await buildAppointmentDraft(patientUid, message);
       toolUsed = "mcp:get_scheduling_catalog";
     } else {
       classification = await classifyIntent(message);

@@ -14,6 +14,7 @@ export const llmProvider: LLMProvider = new OpenRouterProvider({
   model: env.llmModel,
   fallbackModels: env.llmFallbackModels,
   timeoutMs: env.llmTimeoutMs,
+  maxAttempts: env.llmMaxAttempts,
   maxTokens: env.llmMaxTokens,
   disableReasoning: env.llmDisableReasoning,
 });

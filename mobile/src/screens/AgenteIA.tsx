@@ -24,6 +24,7 @@ import {
 import { useTheme } from "@/contexts/ThemeContext";
 
 const PRIMARY = "#1aaa86";
+const ANDROID_KEYBOARD_EXTRA_GAP = 60;
 
 interface MessageMeta {
   intent: string;
@@ -130,7 +131,9 @@ export default function AgenteIA() {
     const show = Keyboard.addListener("keyboardDidShow", (e) => {
       const keyboardTop = e.endCoordinates.screenY;
       rootRef.current?.measureInWindow((_x, y, _w, h) => {
-        setAndroidKeyboardPadding(Math.max(0, y + h - keyboardTop));
+        // Margem extra: alguns teclados (ex.: Samsung com barra de sugestões
+        // e ferramentas) não incluem essa barra na altura reportada ao app.
+        setAndroidKeyboardPadding(Math.max(0, y + h - keyboardTop) + ANDROID_KEYBOARD_EXTRA_GAP);
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
       });
     });

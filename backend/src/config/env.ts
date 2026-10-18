@@ -20,6 +20,8 @@ interface EnvConfig {
   llmFallbackModels: string[];
   /** Limite de tempo de cada chamada ao LLM, incluindo a leitura da resposta (ms). */
   llmTimeoutMs: number;
+  /** Máximo de modelos tentados por chamada (principal + alternativos). */
+  llmMaxAttempts: number;
   /** Limite de tokens gerados por chamada (respostas do CuraDor são curtas). */
   llmMaxTokens: number;
   /** Desliga o "raciocínio" estendido dos modelos que o suportam (reduz latência). */
@@ -49,7 +51,8 @@ function readEnv(): EnvConfig {
       .split(",")
       .map((m) => m.trim())
       .filter(Boolean),
-    llmTimeoutMs: Number(process.env.LLM_TIMEOUT_MS ?? 30000),
+    llmTimeoutMs: Number(process.env.LLM_TIMEOUT_MS ?? 18000),
+    llmMaxAttempts: Number(process.env.LLM_MAX_ATTEMPTS ?? 2),
     llmMaxTokens: Number(process.env.LLM_MAX_TOKENS ?? 1024),
     llmDisableReasoning: (process.env.LLM_DISABLE_REASONING ?? "true") !== "false",
     firebaseProjectId: process.env.FIREBASE_PROJECT_ID ?? "",
